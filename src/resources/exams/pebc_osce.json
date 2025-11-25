@@ -1,0 +1,260 @@
+[
+  {
+    "practice_number": "Practice #1",
+    "page": 2,
+    "door_copy": {
+      "page": 2,
+      "questioner_profile": "doctor",
+      "questioner_type": "healthcare_professional",
+      "feeling": "seeking advice",
+      "text": "Dr. Anna Billings comes to seek your advice for her patient Andrew Frankel, who was in the clinic this morning to request a refill for his Parkinson's medication.\nYour task is to identify and explain any drug-related problem(s) related to patient's symptoms. Respond as you would in practice.\nTime Frame:\nYou have 7 minutes to complete this station."
+    },
+    "patient_profile": {
+      "page": 2,
+      "text": "Name: Andrew Frankel\nGender: M\nAge: 70\nAllergies: None\nMedical Conditions: Parkinson's disease x 4 years\nMedications:\n\"Drug Name\n\",\"Dose\n\",\"Directions\n\",\"Quantity filled\n\",\"Date Filled\n\"\n\"Sinemet\n (Levodopa/Carbidopa)\n\",\"$100/25$ mg po\n TID\n\",\"Take one tablet three times\n daily\n\",\"90 tablets\n\",\"One month ago\n\""
+    },
+    "medical_prescription": null,
+    "references": {
+      "page": 2,
+      "text": "Reference: ETC-Chapter on Parkinson's Disease most current edition"
+    },
+    "medications_on_table": null,
+    "script_and_answers": {
+      "page": 3,
+      "question": "Hi, my patient came to see me to request a refill for his medication, but he has been experiencing some tremors and stiffness, so I wanted to consult with you about your recommendation to manage his symptoms better.",
+      "answer": "Patients Name: Andrew Frankel\nPatient's Age: 70\nAllergies: None\nMedical Conditions: Parkinson's disease for the last 4 years.\nIf asked how does the patient take his medication? His caregiver indicates she gives him 1 tablet in the morning, a half hour before breakfast and an evening dose, a half hour before dinner.\nHe is supposed to take the afternoon dose himself, but he forgets to take it.\nDoes the patient take any Herbal/Over-the-Counter medications? No\nWhat are the patient's symptoms: His caregiver notes sometimes he is unable to move or walks very slowly due to stiffness especially around 5 p.m.\nIf asked when/how does this occur? It started in the last month.\nThe patient complained of stiffness getting up in the morning, but it goes away after 2-3 hours.\nThe tremors start gradually at around 3 pm in the afternoon, in the hands first then the rest of the body.\nIs the patient able to swallow pills? Yes.\nIf asked if he is taking any other medications? No.\nAndrew Frankel's medications:\nMedications/Dosage\nDose\nLast Filled\nPrescriber\n1 month ago\nDr. Billings\nSinemet (Levodopa/Carbidopa) 100/25 mg po TID"
+    },
+    "assessor_sheet": {
+      "page": 3,
+      "checklist": [
+        "Determined the following:",
+        "Medical Conditions",
+        "Medications",
+        "Asked when the patient is experiencing breakthrough symptoms.",
+        "Asked if the patient is taking any other medications or supplements including over-the-counter medications.",
+        "Provided a clear and correct recommendation to the doctor (the following options are appropriate):",
+        "1. Address the importance of patient adherence as most symptoms seem to occur when the dose wears off and the patient likely isn't taking his afternoon dose",
+        "2. Add entacapone (COMT inhibitor)",
+        "3. Add rasagiline (MAOI-B inhibitor)",
+        "4. Add a dopamine agonist such as pramipexole or ropinirole",
+        "5. Change levodopa/carbidopa to Sinemet CR 200/50 mg BID (if the patient does not want to take the afternoon dose) (Teaching point: note patient was taking a total of 300 mg Levodopa with IR formulation, when switching to CR we should calculate the dosage to be about 30% greater)",
+        "Asked only relevant questions.",
+        "Provided a follow-up plan."
+      ]
+    },
+    "additional_notes": {
+      "page": 3,
+      "text": "General Comments:\nY/N\nSuggested Supplemental Readings:\n1)ETC-Chapter on Parkinson's Disease most current edition\n2)https://www.medsafe.govt.nz/Profs/datasheet/s/Sinemet CRtab.pdf(page 2)\nOverall Communications:\n1: Excellent: (clear explanation/readily understood/addressed concerns)\n2. Good (communicated clearly)\n3. Needs Improvement: (difficult to understand at times/unclear)\n4. Poor: (poor/unclear throughout interaction)\nCircle One of the Following:\nMisinformation given to the patient\nYes\nNo\nPatient's health put at risk\nYes\nNo"
+    }
+  },
+  {
+    "practice_number": "Practice #2",
+    "page": 4,
+    "door_copy": {
+      "page": 4,
+      "questioner_profile": "patient",
+      "questioner_type": "patient_or_friend",
+      "feeling": "worried",
+      "text": "A young lady is coming to your pharmacy to pick up Plan B®.\nCounsel her as you would in practice.\nTime Frame:\nYou have 7 minutes to complete this station."
+    },
+    "patient_profile": {
+      "page": 4,
+      "text": "Name: Sheryl Watts Gender: Female\nAge: 33\nPatient Info:\nShe has not been taking any oral contraceptives. She had unprotected sex and is worried about being pregnant.\nHer friend took Plan B before and now Sheryl wants to know if it is also a good option for herself."
+    },
+    "medical_prescription": null,
+    "references": {
+      "page": 4,
+      "text": "Reference: Plan B monograph"
+    },
+    "medications_on_table": null,
+    "script_and_answers": {
+      "page": 5,
+      "question": "Hi there, I would like to purchase a pack of Plan B.",
+      "answer": "(In your role please be a bit nervous and embarrassed.)\nAbout You: You were having sex last night, the condom broke and you are really worried about becoming pregnant.\nYou have never taken Plan B before but you did hear that the timing of when you take it is important.\nYou see your gynaecologist regularly and had a normal pap smear 3 months ago.\nYou do not have any abnormal vaginal bleeding and have not confirmed whether you are pregnant.\n(If the pharmacist asks you if you are pregnant or know for sure you are pregnant you say: \"no.\")\nAge: 33\nSocial History\nYou smoke on the weekends and drink once or twice a week\nVery healthy\nYoga instructor\nAllergies: None\nMedical History: None\nMedications: None\nOver-the-Counter Medications/Herbals: Vitamin C supplements\nSTANDARDIZED PATIENT INSTRUCTIONS: If NOT told by the candidate by the 5-minute mark, then you MUST ask:\n• \"Can I treat this myself or do I need to see the Dr?\"\n• \"Do you know what kind of infection I may have?\""
+    },
+    "assessor_sheet": {
+      "page": 5,
+      "checklist": [
+        "Assured patient they are speaking in a confidential area.",
+        "Addressed the patient's question: \"I would like to purchase a pack of Plan B.\"",
+        "Asked the patient if, and when she had unprotected intercourse.",
+        "If > 72 hours have passed since unprotected sex occurred, Plan B may not be as effective.",
+        "Asked the patient if she is taking any other medications and if she has any medical conditions:",
+        "1. Undiagnosed vaginal bleeding, liver disease and breast cancer are contraindications",
+        "2. Migraines can be exacerbated by Plan B",
+        "3. Teaching Point: What medications would we be concerned about decreasing the efficacy of Plan B?",
+        "Phenytoin, carbamazepine, rifampin, St. John's Wort, and griseofulvin.",
+        "Asked if the patient knows whether she is pregnant. Plan B is contraindicated in pregnant patients.",
+        "Appropriately used resources (i.e., did not spend too much time looking at reference materials).",
+        "Properly instructed patient on how to take the medication:",
+        "Take 2 tablets right away. The best chances of effectiveness occur within the first 24 hours of unprotected sex or the contraceptive accident.",
+        "If taken after 72 hours of the unprotected sex, the efficacy is questionable. Take with plenty of water.",
+        "Nausea and headache are common side-effects of the medication.",
+        "Offered follow up contact (phone call, etc.)",
+        "Asked only relevant questions.",
+        "Provided a follow-up plan:",
+        "1. Told patient to have a pregnancy test if her period is late by at least one week",
+        "2. Advised patient to take another dose if she vomits within the first 2 hours of taking the medication",
+        "3. Advised patient to continue using backup contraceptive methods when engaging in sexual activity"
+      ]
+    },
+    "additional_notes": {
+      "page": 5,
+      "text": "General Comments:\nOverall Communications:\n1: Excellent. (Clear explantation/readily understood/addressed concerns)\n2. Good (communicated clearly)\n3. Needs Improvement: (difficult to understand at times/ unclear)\n4. Poor: (poor/Unclear throughout interaction)\nY/N\nSuggested Supplemental Reading:\nPlan B monograph\nCircle One of the Following:\nMisinformation given to the patient\nPatient's health put at risk\nYes\nNo\nYes\nNo"
+    }
+  },
+  {
+    "practice_number": "Practice #3",
+    "page": 6,
+    "door_copy": {
+      "page": 6,
+      "questioner_profile": "unknown",
+      "questioner_type": "custom",
+      "feeling": "seeking help",
+      "text": "An older gentlemen is coming to see you to get a prescription filled for an antibiotic. Please assist him as you would in practice.\nTime Frame:\nYou have 7 minutes to complete this station."
+    },
+    "patient_profile": {
+      "page": 6,
+      "text": "Name: Mr. Hamilton Gender: M\nAge: 62"
+    },
+    "medical_prescription": {
+      "page": 6,
+      "text": "Prescription for Mr. Han\non faxed from Dr. Framin's office earlier this morning\nRx\nToday's Date\nFor: James Hamilton\nBiaxin (clarithromycin) 500mg\nBID x 7 days\nMitte: 14 tablets\nRefills:0\nDr. Framin, (assume signature correct)"
+    },
+    "references": {
+      "page": 6,
+      "text": "Reference: Biaxin (clarithromycin) monograph"
+    },
+    "medications_on_table": null,
+    "script_and_answers": {
+      "page": 7,
+      "question": "Hello, my doctor faxed over a prescription for an antibiotic I would like to pick it up.",
+      "answer": "If the pharmacist asks, why did you see your Dr/get the prescription?\nIf the Candidate asks what did the Dr tell you about the antibiotic: I had pain in my sinuses and my doctor told me I have a sinus infection.\nSymptoms Sign infection? Pain in my sinuses, feeling stuffy.\nHow long have you had these symptoms? For about 2 weeks.\nSocial History:\nNon-smoker\nNo alcohol\nModerate exercise (2-3 times per week for 30 minutes)\nAllergies: Penicillin (if asked what happens, you have trouble breathing and get rashes all over your body.)\nMedical Conditions:\nHyperlipidemia (high cholesterol) since 2012\nRecent: got a sinus infection\nMedications:\nSimvastatin (for cholesterol) 20mg daily. How long have you been taking this? For about a year.\nI just got it refilled one week ago.\nNew filling today: Biaxin (clarithromycin) for a sinusitis\nOver-the-Counter Medications/Herbals: None"
+    },
+    "assessor_sheet": {
+      "page": 7,
+      "checklist": [
+        "Asked relevant information:",
+        "Medical Conditions",
+        "Medications",
+        "Allergies",
+        "Over-the-counter medications/herbal supplements",
+        "Assessed patient's knowledge of the prescription. What it was for? Symptoms related to a sinus infection.",
+        "Identified interaction between clarithromycin and simvastatin. Clarithromycin is a strong CYP3A4 inhibitor which can cause increased levels of simvastatin in the body, predisposing the patient to adverse effects the most severe ones being myopathy (muscle damage) and liver damage.",
+        "Any of the following action plans are acceptable:",
+        "1. Do not dispense the clarithromycin. Call the doctor to change the antibiotic for sinus infections to something other than a macrolide or ẞ-lactam",
+        "2. Dispense the clarithromycin but advise the patient of the increased risks, while telling them not to take the simvastatin for the duration of the antibiotic treatment",
+        "3. Do not dispense the clarithromycin.\nCall the doctor to change the simvastatin to rosuvastatin, pravastatin, or fluvastatin (as these statins are not significantly affected by CYP3A4 inhibitors)",
+        "Offered follow-up contact (phone call, etc).",
+        "Asked only relevant questions."
+      ]
+    },
+    "additional_notes": {
+      "page": 7,
+      "text": "General Comments:\nSuggested Supplemental Reading:\nBiaxin (clarithromycin) monograph\nOverall Communications:\n1: Excellent: (clear explanation/ readily understood/addressed concerns)\n2. Good (communicated clearly)\n3. Needs Improvement: (difficult to understand at times/ unclear)\n4. Poor: (poor/Unclear throughout interaction)\nCircle One of the Following:\nMisinformation given to the patient\nPatient's health put at risk.\nYes\nYes\nNo\nNo"
+    }
+  },
+  {
+    "practice_number": "Practice #4",
+    "page": 8,
+    "door_copy": {
+      "page": 8,
+      "questioner_profile": "unknown",
+      "questioner_type": "custom",
+      "feeling": "seeking help",
+      "text": "A customer is coming to your pharmacy to fill a new prescription.\nPlease proceed as you would in practice.\nTime Frame:\nYou have 7 minutes to complete this station"
+    },
+    "patient_profile": null,
+    "medical_prescription": {
+      "page": 8,
+      "text": "Dr. Sarah Thompson, MD\nFamily Doctor\nNewTown Medical Centre\n888-658-69852 Fax: 458-586-9854\nCPSO: 123456\nPatient Name: Andrea Levy\nRx:\nSig: Oxybutin 2.5mg po daily\nMitte: 30\nRefills: 1\nDr. Sarah Thompson\n(assume original signature)"
+    },
+    "references": {
+      "page": 8,
+      "text": "References: Urinary Incontinence in Adults(CTC chapter)"
+    },
+    "medications_on_table": null,
+    "script_and_answers": {
+      "page": 9,
+      "question": "Hello, I have a new prescription I would like to fill.",
+      "answer": "Why did you see the doctor/ what did the doctor tell you it was for?\nWhenever I would cough or exercise. I had urine leakage. How long have you had these symptoms?\nIt has been going on for a few months, so I saw my doctor yesterday.\nHe did a cough test and said I have urine incontinence.\nWhat time of day: It is usually just when I exercise or cough\nAge: 54\nAllergies: None\nWeight: My doctor said I am normal weight for my age and height. I am 63 kg\nMedical Conditions: Nothing generally healthy given that I am going through menopause.\nExcept just the past few months experiencing this urine problem.\nMedications: None, just this new one I am getting today\nHistory of Constipation? No\nDo you consume caffeine? No\nOver-the-Counter Medications/Herbals: I take a multivitamin once a day\nSocial History:\nDo you drink Alcohol: No\nSmoke: No\nDo you exercise: Yes, I jog 3 times a week an I do pelvic floor exercises\nSTANDARDIZED PATIENT INSTRUCTIONS: IF NOT told by the candidate by the 5-minute mark, then you MUST ask:\nIf told they will not dispense the prescription and did not explain why: Why do you need to contact my doctor?\nIf they dispense the medication: How soon will this medication start working?"
+    },
+    "assessor_sheet": {
+      "page": 9,
+      "checklist": [
+        "Assessed from the patient why they saw the doctor/ understanding of the new prescription",
+        "Assessed symptoms of incontinence to determine what type of they are exercising (in this case it is stress incontinence)",
+        "Confirmed the following regarding the patient's medical history:",
+        "Medications",
+        "Medical Conditions",
+        "Alcohol consumption",
+        "Over the counter/herbal products",
+        "Assessed patient's lifestyle/non pharm interventions have been optimized:",
+        "Weight",
+        "Tried any pelvic floor training; exercise",
+        "History of smoking",
+        "History of constipation",
+        "Identified based on the patients symptoms of stress incontinence oxybutynin would not be first line therapy.",
+        "Action taken:",
+        "Call/fax the doctor to recommend an alternative therapy: possibly vaginal estrogen (if has mixed incontinence and vaginal atrophy given had menopause.) or Duloxetine",
+        "Encouraged continued non-pharmacological options:",
+        "Pelvic floor muscle training (although primarily prescribed for stress urinary incontinence, Kegel exercises may also benefit urge urinary incontinence)",
+        "Bladder training (timed voiding)",
+        "Biofeedback training",
+        "Offered follow-up contact (phone call, etc)."
+      ]
+    },
+    "additional_notes": {
+      "page": 9,
+      "text": "Teaching point: in our duty as pharmacist we must assess the appropriateness of prescriptions and place in therapy.\nSince this patient is experiencing stress incontinence the optimal outcome would be to discuss changing therapy with the doctor as oxybutynin is not effective for stress incontinence.\nYou can also reflect the patients health is not harmed or at risky waiting to dispense. Clarify this prescription.\nGeneral Comments:\nSuggested Supplemental Reading: TC chapter Urinary Incomitance\nY/N\nOverall Communications:\nCircle One of the Following:\n1. Excellent: (clear explanation/readily understood/addressed concerns)\n2. Good: (communicated clearly)\n3. Needs Improvement: (difficult to understand at times/unclear)\n4. Poor: (poor/unclear throughout interaction)\nMisinformation given to the patient\nPatient's health put at risk\nYes\nNo\nYes\nNo"
+    }
+  },
+  {
+    "practice_number": "Practice #5",
+    "page": 10,
+    "door_copy": {
+      "page": 10,
+      "questioner_profile": "unknown",
+      "questioner_type": "custom",
+      "feeling": "seeking help",
+      "text": "A patient is picking up a new prescription. Counsel them as you would in practice.\nTime Allotted:\nYou have 7 minutes to complete this station."
+    },
+    "patient_profile": {
+      "page": 10,
+      "text": "Name: Andrew Jones\nGender: Male\nAge: 60\nAllergies: None\nMedical Conditions:\nMild angina\nErectile dysfunction\nMedications:\nDrug Name\nDose\nDirections\nQuantity filled\nDate Filled\nNitro-glycerin\n0.4 mg\nq 5 minutes si PRN\n1 bottle\n3 months ago\nASA\n81 mg\nDaily\n30\nOne week ago\nViagra\n50 mg\npo 60 minutes before sexual activity\n30 tablets\nToday"
+    },
+    "medical_prescription": null,
+    "references": {
+      "page": 10,
+      "text": "References: Viagra patient info print out, and Pharmacist letter Nitrates and Phosphodiesterase Type Five Inhibitors"
+    },
+    "medications_on_table": null,
+    "script_and_answers": {
+      "page": 11,
+      "question": "Hello, I am here to pick up a new prescription for Viagra and I have never taken it before. I was hoping you could tell me how to use it.",
+      "answer": "Social History:\n• Non-smoker\n• Moderate alcohol (1 glass of wine 3-4 times a week)\n• Moderate exercise (2-3 times per week for 30 minutes)\nChief Concerns:\n• Feeling a bit embarrassed about having erectile dysfunction and you have never taken medication for it before. You have a history of chest pain for one year and use nitroglycerin very occasionally.\nHow often or when did you last take the nitroglycerin? I have used it twice in the past year. The most recent time I used it was two months ago\nAllergies: None\nMedical Conditions:\n• Angina (chest pain). last experienced chest pain two months ago\n• Newly diagnosed erectile dysfunction (started three weeks ago)\nMedications:\n• Nitro-glycerin one tablet under the tongue as needed (last used once two months ago)\n• Aspirin 81 mg once a day (Dr told you to take it for your heart)\n• New Viagra 50 mg by mouth 60 minutes before sexual activity\nOver-the-Counter Medications/Herbals: None\nSTANDARDIZED PATIENT INSTRUCTIONS: If NOT told by the candidate by the 5-minute mark, then you MUST ask:\n• “Are we speaking in a private area, because I don’t want anyone to know about this.”"
+    },
+    "assessor_sheet": {
+      "page": 11,
+      "checklist": [
+        "Informed the patient that they are speaking in a confidential area/handled the patient’s discomfort.",
+        "Confirmed the information on the patient profile.",
+        "Confirmed if the patient is taking any other medications or OTC products.",
+        "Appropriately used resources (i.e., did not spend too much time looking at reference materials).",
+        "Confirmed with the patient when and how often they take NTG.",
+        "Stated the name of drug (brand and generic) and what it is used for (candidate should dispense the medication).",
+        "Explained how to take Viagra in a professional manner.",
+        "Counseled the patient: nitrates should NOT be taken within at least 24 hours of sildenafil and explained why (marked hypotension).",
+        "If the patient experiences an episode of angina and it is within 24 hours of taking Viagra (sildenafil), then they should seek emergency medical care.",
+        "Offered non-pharm measures/education of symptoms of erectile dysfunction.",
+        "Informed patient of side effects (mention a minimum of three).",
+        "Informed patient that while taking the medication they will still need sexual stimulation.",
+        "Offered follow up contact (phone call, etc.)"
+      ]
+    },
+    "additional_notes": {
+      "page": 11,
+      "text": "Other Comments: Suggested Supplemental Reading:\nViagra patient info print out, and Pharmacist letter Nitrates and Phosphodiesterase Type\nFive Inhibitors\nCircle One of the Following:\nMisinformation given to the patient Yes No\nPatient’s health put at risk Yes No\nOverall Communications:\n1: Excellent: (clear explanation/ readily understood /addressed concerns)\n2. Good (communicated clearly)\n3. Needs Improvement: (difficult"
+    }
+  }
+]

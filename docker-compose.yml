@@ -1,0 +1,28 @@
+version: '3.9'
+
+services:
+  redis:
+    image: redis:latest
+    container_name: ringconnect_redis
+    restart: always
+    ports:
+      - "6379:6379"
+  api:
+    image: debayo/ringconnect-backend:dev # Specify your custom Node.js image name and tag
+    build: 
+      context: .
+      dockerfile: Dockerfile.dev
+    env_file: ./.env.dev
+    ports:
+      - $NODE_LOCAL_PORT:$NODE_DOCKER_PORT # Specify the exposed port, we will need this to access the app from local machine
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - redis
+    environment:
+      - NODE_ENV=development
+      - REDIS_HOST=ringconnect_redis
+      - REDIS_PORT=6379
+    command: npm run dev
+      
