@@ -22,9 +22,9 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'EOF'
             set -e
-            cd /srv/dev-api
+            cd /srv/admin-api
             git fetch origin master
             git reset --hard origin/master
             npm ci
-            pm2 reload dev-api
+            pm2 reload admin-api
           EOF
