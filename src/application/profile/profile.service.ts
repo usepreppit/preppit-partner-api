@@ -42,6 +42,22 @@ export class ProfileService {
 				throw new ValidationError("Invalid user");
 			}
 
+			// For partners, include onboarding status
+			if (accountType === 'partner') {
+				const onboardingStatus = this.checkOnboardingCompletion(user);
+				
+				return {
+					...user,
+					account_type: accountType,
+					onboarding_status: {
+						is_completed: user.is_onboarding_completed || false,
+						completed_at: user.onboarding_completed_at,
+						missing_fields: onboardingStatus.missing_fields,
+						completion_percentage: onboardingStatus.completion_percentage
+					}
+				};
+			}
+
 			return {
 				...user,
 				account_type: accountType
@@ -50,6 +66,37 @@ export class ProfileService {
 			this.logger.error(`Error fetching user profile: ${error}`);
 			throw new ApiError(400, 'Error fetching user profile', error);
 		}
+	}
+
+	// Helper method to check onboarding completion status
+	private checkOnboardingCompletion(partner: any) {
+		const requiredFields = [
+			'organization_name',
+			'contact_person_name',
+			'contact_email',
+			'contact_phone',
+			'country',
+			'timezone',
+			'preferred_currency',
+			'exam_types'
+		];
+
+		const missing_fields: string[] = [];
+		
+		requiredFields.forEach(field => {
+			if (!partner[field] || (Array.isArray(partner[field]) && partner[field].length === 0)) {
+				missing_fields.push(field);
+			}
+		});
+
+		const completion_percentage = Math.round(
+			((requiredFields.length - missing_fields.length) / requiredFields.length) * 100
+		);
+
+		return {
+			missing_fields,
+			completion_percentage
+		};
 	}
 
 	async ChangePassword(user_id: string, old_password: string, new_password: string, account_type?: 'admin' | 'partner') {
@@ -200,7 +247,7 @@ export class ProfileService {
 	}
 }
 
-async CompleteOnboarding(user_id: string, account_type?: 'admin' | 'partner') {
+async CompleteOnboarding(user_id: string, onboardingData: any, account_type?: 'admin' | 'partner') {
 	try {
 		// Only partners can complete onboarding
 		if (account_type !== 'partner') {
@@ -218,10 +265,43 @@ async CompleteOnboarding(user_id: string, account_type?: 'admin' | 'partner') {
 			throw new ValidationError("Onboarding has already been completed");
 		}
 
-		// Mark onboarding as complete
+		// Validate all required fields are present
+		const requiredFields = [
+			'organization_name',
+			'contact_person_name',
+			'contact_email',
+			'contact_phone',
+			'country',
+			'timezone',
+			'preferred_currency',
+			'exam_types'
+		];
+
+		const missingFields = requiredFields.filter(field => {
+			const value = onboardingData[field];
+			return !value || (Array.isArray(value) && value.length === 0);
+		});
+
+		if (missingFields.length > 0) {
+			throw new ValidationError(
+				`Cannot complete onboarding. Missing required fields: ${missingFields.join(', ')}`
+			);
+		}
+
+		// Update partner with onboarding data and mark as complete
 		await this.partnerRepository.updateById(user_id, { 
+			organization_name: onboardingData.organization_name,
+			contact_person_name: onboardingData.contact_person_name,
+			contact_email: onboardingData.contact_email,
+			contact_phone: onboardingData.contact_phone,
+			country: onboardingData.country,
+			timezone: onboardingData.timezone,
+			organization_logo: onboardingData.organization_logo || '',
+			preferred_currency: onboardingData.preferred_currency,
+			exam_types: onboardingData.exam_types,
 			is_onboarding_completed: true,
-			onboarding_completed_at: new Date()
+			onboarding_completed_at: new Date(),
+			partner_status: 'active' // Activate partner after onboarding
 		});
 
 		return { 
@@ -232,6 +312,72 @@ async CompleteOnboarding(user_id: string, account_type?: 'admin' | 'partner') {
 	} catch (error) {
 		this.logger.error(`Error completing onboarding: ${error}`);
 		throw new ApiError(400, 'Error completing onboarding', error);
+	}
+}
+
+async SaveOnboardingProgress(user_id: string, progressData: any, account_type?: 'admin' | 'partner') {
+	try {
+		// Only partners can save onboarding progress
+		if (account_type !== 'partner') {
+			throw new ValidationError("Onboarding is only available for partner accounts");
+		}
+
+		const curr_partner = await this.partnerRepository.findById(user_id);
+
+		if (!curr_partner) {
+			throw new ValidationError("Invalid partner");
+		}
+
+		// Check if already completed
+		if (curr_partner.is_onboarding_completed) {
+			throw new ValidationError("Onboarding has already been completed. Cannot save progress.");
+		}
+
+		// Build update object with only provided fields
+		const updateData: any = {};
+		
+		const allowedFields = [
+			'organization_name',
+			'contact_person_name',
+			'contact_email',
+			'contact_phone',
+			'country',
+			'timezone',
+			'organization_logo',
+			'preferred_currency',
+			'exam_types'
+		];
+
+		// Only update fields that are provided in progressData
+		allowedFields.forEach(field => {
+			if (progressData[field] !== undefined && progressData[field] !== null) {
+				updateData[field] = progressData[field];
+			}
+		});
+
+		if (Object.keys(updateData).length === 0) {
+			throw new ValidationError("No valid onboarding fields provided to save");
+		}
+
+		// Update partner with progress data (without marking as complete)
+		await this.partnerRepository.updateById(user_id, updateData);
+
+		// Get updated partner to calculate new completion status
+		const updated_partner = await this.partnerRepository.findById(user_id);
+		const onboardingStatus = this.checkOnboardingCompletion(updated_partner);
+
+		return { 
+			message: 'Onboarding progress saved successfully',
+			fields_saved: Object.keys(updateData),
+			onboarding_status: {
+				is_completed: false,
+				missing_fields: onboardingStatus.missing_fields,
+				completion_percentage: onboardingStatus.completion_percentage
+			}
+		};
+	} catch (error) {
+		this.logger.error(`Error saving onboarding progress: ${error}`);
+		throw new ApiError(400, 'Error saving onboarding progress', error);
 	}
 }
 }

@@ -3,6 +3,7 @@ import { container } from '../../startup/di/container';
 import { ProfileController } from './profile.controller';
 import { authMiddleware } from '../../middlewares/auth.middleware';
 import { requireOnboardingIncomplete } from '../../middlewares/onboarding.middleware';
+import { validate_complete_onboarding, validate_save_onboarding_progress } from '../../validation/onboarding.validation';
 
 const route = Router();
 route.use(authMiddleware);
@@ -16,6 +17,18 @@ export default (app: Router) => {
     route.post('/update_profile_picture', profileController.UpdateProfilePicture.bind(profileController));
     route.delete('/remove_profile_picture', profileController.RemoveProfilePicture.bind(profileController));
     
-    // Onboarding route - only accessible to partners who haven't completed onboarding
-    route.post('/complete_onboarding', requireOnboardingIncomplete, profileController.CompleteOnboarding.bind(profileController));
+    // Onboarding routes - only accessible to partners who haven't completed onboarding
+    route.put(
+        '/onboarding', 
+        requireOnboardingIncomplete, 
+        validate_save_onboarding_progress,
+        profileController.SaveOnboardingProgress.bind(profileController)
+    );
+    
+    route.post(
+        '/complete_onboarding', 
+        requireOnboardingIncomplete, 
+        validate_complete_onboarding,
+        profileController.CompleteOnboarding.bind(profileController)
+    );
 };

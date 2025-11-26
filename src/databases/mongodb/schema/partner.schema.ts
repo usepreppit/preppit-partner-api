@@ -72,6 +72,36 @@ const schema = new Schema<IPartner>(
     onboarding_completed_at: {
       type: Date,
     },
+    // Onboarding fields
+    organization_name: {
+      type: String,
+    },
+    contact_person_name: {
+      type: String,
+    },
+    contact_email: {
+      type: String,
+    },
+    contact_phone: {
+      type: String,
+    },
+    country: {
+      type: String,
+    },
+    timezone: {
+      type: String,
+    },
+    organization_logo: {
+      type: String,
+    },
+    preferred_currency: {
+      type: String,
+      enum: ['USD', 'CAD', 'NGN', 'GBP', 'EUR'],
+    },
+    exam_types: [{
+      type: String,
+      enum: ['PEBC_OSCE', 'IELTS', 'PLAB', 'USMLE', 'NCLEX'],
+    }],
   },
   {
     timestamps: true,

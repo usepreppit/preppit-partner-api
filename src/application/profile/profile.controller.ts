@@ -102,11 +102,31 @@ export class ProfileController {
         try {
             const user_id = req.curr_user?._id?.toString() as string;
             const account_type = req.account_type;
+            const onboardingData = req.body;
+            
             try {
-                const result = await this.profileService.CompleteOnboarding(user_id, account_type);
+                const result = await this.profileService.CompleteOnboarding(user_id, onboardingData, account_type);
                 ApiResponse.ok(result, 'Onboarding completed successfully').send(res);
             } catch (error) {
                 this.logger.error('Error completing onboarding', error);
+                next(error);
+            }
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async SaveOnboardingProgress(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const user_id = req.curr_user?._id?.toString() as string;
+            const account_type = req.account_type;
+            const progressData = req.body;
+            
+            try {
+                const result = await this.profileService.SaveOnboardingProgress(user_id, progressData, account_type);
+                ApiResponse.ok(result, 'Onboarding progress saved successfully').send(res);
+            } catch (error) {
+                this.logger.error('Error saving onboarding progress', error);
                 next(error);
             }
         } catch (error) {

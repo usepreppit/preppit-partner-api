@@ -1,8 +1,9 @@
 import { inject, injectable } from 'inversify';
 import { Logger } from './../../startup/logger';
-import { ApiError } from '../../helpers/error.helper';
-import { IUser } from './types/user.types';
+import { ApiError, ValidationError } from '../../helpers/error.helper';
 import { UserRepository } from './models/user.repository';
+import { AdminRepository } from './models/admin.repository';
+import { PartnerRepository } from './models/partner.repository';
 
 
 @injectable()
@@ -10,24 +11,79 @@ export class UserService {
     constructor(
 		@inject(Logger) private readonly logger: Logger,
         @inject(UserRepository) private readonly userRepository: UserRepository,
+        @inject(AdminRepository) private readonly adminRepository: AdminRepository,
+        @inject(PartnerRepository) private readonly partnerRepository: PartnerRepository,
     ) {}
 
-    async GetMe(user_id:string): Promise<IUser | null> {
+    async GetMe(user_id: string, account_type?: 'admin' | 'partner'): Promise<any> {
 		try {
-			//get user profile
-            this.logger.info('Getting users profile');
-            const user = await this.userRepository.findById(user_id);
-
-			const parsedSubscriptions = await this.ParseUserSubscriptions(user);
-			user.parsedSubscriptions = parsedSubscriptions;
-
-			delete user.subscriptions;
-
-            return user;
+			this.logger.info('Getting user profile');
+			
+			// Handle Admin and Partner accounts (no subscriptions)
+			if (account_type === 'admin') {
+				const admin = await this.adminRepository.findById(user_id);
+				if (!admin) {
+					throw new ValidationError("Invalid admin");
+				}
+				return {
+					...admin,
+					account_type: 'admin'
+				};
+			} else if (account_type === 'partner') {
+				const partner = await this.partnerRepository.findById(user_id);
+				if (!partner) {
+					throw new ValidationError("Invalid partner");
+				}
+				
+				// Include onboarding status for partners
+				const onboardingStatus = this.checkPartnerOnboardingStatus(partner);
+				
+				return {
+					...partner,
+					account_type: 'partner',
+					onboarding_status: {
+						is_completed: partner.is_onboarding_completed || false,
+						completed_at: partner.onboarding_completed_at,
+						missing_fields: onboardingStatus.missing_fields,
+						completion_percentage: onboardingStatus.completion_percentage
+					}
+				};
+			} 
 		} catch (error) {
 			this.logger.error(`Error Getting User Profile: ${error}`);
 			throw new ApiError(400, 'Error Getting User Profile', error);
 		}
+	}
+
+	// Helper method to check partner onboarding status
+	private checkPartnerOnboardingStatus(partner: any) {
+		const requiredFields = [
+			'organization_name',
+			'contact_person_name',
+			'contact_email',
+			'contact_phone',
+			'country',
+			'timezone',
+			'preferred_currency',
+			'exam_types'
+		];
+
+		const missing_fields: string[] = [];
+		
+		requiredFields.forEach(field => {
+			if (!partner[field] || (Array.isArray(partner[field]) && partner[field].length === 0)) {
+				missing_fields.push(field);
+			}
+		});
+
+		const completion_percentage = Math.round(
+			((requiredFields.length - missing_fields.length) / requiredFields.length) * 100
+		);
+
+		return {
+			missing_fields,
+			completion_percentage
+		};
 	}
 
 	async ParseUserSubscriptions(user: any) {

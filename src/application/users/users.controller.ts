@@ -14,8 +14,10 @@ export class UserController {
     async GetMe(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const user_id = req.curr_user?._id?.toString() as string;
+            const account_type = req.account_type;
+            
             try {
-                const curr_user = await this.userService.GetMe(user_id);
+                const curr_user = await this.userService.GetMe(user_id, account_type);
 
                 ApiResponse.ok(curr_user, 'user fetched successfully').send(res);
             } catch (error) {
