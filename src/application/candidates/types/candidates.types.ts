@@ -26,6 +26,7 @@ export interface CandidateWithBatch {
     invite_status: 'pending' | 'accepted' | 'expired';
     invite_sent_at?: Date;
     invite_accepted_at?: Date;
+    partner_candidate_id?: string; // ID of the PartnerCandidate relationship record
     createdAt: Date;
     updatedAt: Date;
 }

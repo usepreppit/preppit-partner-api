@@ -54,6 +54,7 @@ import { PaymentPlansModel } from '../../application/payments/models/payment_pla
 import { SubscriptionsModel } from '../../application/subscriptions/models/subscriptions.model';
 import { UserActivityLogModel } from '../../application/activity/models/activity_logs.model';
 import { CandidateBatchModel } from '../../databases/mongodb/schema/candidate_batch.schema';
+import PartnerCandidateModel from '../../databases/mongodb/schema/partner_candidate.schema';
 
 
 // Repositories
@@ -131,6 +132,7 @@ container.bind<typeof PaymentPlansModel>('PaymentPlansModel').toConstantValue(Pa
 container.bind<typeof SubscriptionsModel>('SubscriptionsModel').toConstantValue(SubscriptionsModel);
 container.bind<typeof UserActivityLogModel>('UserActivityLogModel').toConstantValue(UserActivityLogModel);
 container.bind<typeof CandidateBatchModel>('CandidateBatchModel').toConstantValue(CandidateBatchModel);
+container.bind<typeof PartnerCandidateModel>('PartnerCandidateModel').toConstantValue(PartnerCandidateModel);
 
 
 // Application Services

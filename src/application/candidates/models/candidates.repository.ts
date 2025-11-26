@@ -3,6 +3,7 @@ import { Model } from 'mongoose';
 import mongoose from 'mongoose';
 import { IUser } from '../../users/types/user.types';
 import { ICandidateBatch } from '../../../databases/mongodb/model/candidate_batch.model';
+import { IPartnerCandidate } from '../../../databases/mongodb/model/partner_candidate.model';
 import { CandidateWithBatch, BatchWithCandidateCount } from '../types/candidates.types';
 
 @injectable()
@@ -10,6 +11,7 @@ export class CandidatesRepository {
     constructor(
         @inject('UserModel') private userModel: Model<IUser>,
         @inject('CandidateBatchModel') private candidateBatchModel: Model<ICandidateBatch>,
+        @inject('PartnerCandidateModel') private partnerCandidateModel: Model<IPartnerCandidate>,
     ) {}
 
     async createBatch(partner_id: string, batch_name: string): Promise<ICandidateBatch> {
@@ -57,25 +59,102 @@ export class CandidatesRepository {
         firstname: string,
         lastname: string,
         email: string
-    ): Promise<IUser> {
-        const candidate = await this.userModel.create({
-            firstname,
-            lastname,
-            email,
+    ): Promise<{ user: IUser; partnerCandidate: IPartnerCandidate }> {
+        // Check if user already exists
+        let user = await this.userModel.findOne({ email }).lean();
+        
+        // Create user if doesn't exist
+        if (!user) {
+            const newUser = await this.userModel.create({
+                firstname,
+                lastname,
+                email,
+                is_active: true,
+                is_onboarding_completed: false,
+                password: '' // Will be set when user accepts invite
+            });
+            user = newUser.toObject();
+        }
+
+        // Create partner-candidate relationship
+        const partnerCandidate = await this.partnerCandidateModel.create({
             partner_id: new mongoose.Types.ObjectId(partner_id),
+            candidate_id: user._id,
             batch_id: new mongoose.Types.ObjectId(batch_id),
-            is_active: true,
-            is_onboarding_completed: false,
             is_paid_for: false,
             invite_status: 'pending',
             invite_sent_at: new Date()
         });
-        return candidate;
+
+        return { user: user as IUser, partnerCandidate };
+    }
+
+    async checkPartnerCandidateExists(
+        partner_id: string,
+        batch_id: string,
+        email: string
+    ): Promise<boolean> {
+        const user = await this.userModel.findOne({ email }).lean();
+        if (!user) return false;
+
+        const relationship = await this.partnerCandidateModel.findOne({
+            partner_id: new mongoose.Types.ObjectId(partner_id),
+            candidate_id: user._id,
+            batch_id: new mongoose.Types.ObjectId(batch_id)
+        }).lean();
+
+        return !!relationship;
+    }
+
+    async checkMultiplePartnerCandidatesExist(
+        partner_id: string,
+        batch_id: string,
+        emails: string[]
+    ): Promise<Map<string, boolean>> {
+        // Get all users with these emails
+        const users = await this.userModel.find(
+            { email: { $in: emails } },
+            { email: 1, _id: 1 }
+        ).lean();
+
+        const userMap = new Map(users.map(u => [u.email, u._id]));
+        const candidateIds = Array.from(userMap.values());
+
+        // Get existing relationships
+        const relationships = await this.partnerCandidateModel.find({
+            partner_id: new mongoose.Types.ObjectId(partner_id),
+            candidate_id: { $in: candidateIds },
+            batch_id: new mongoose.Types.ObjectId(batch_id)
+        }).lean();
+
+        const relationshipSet = new Set(
+            relationships.map(r => r.candidate_id.toString())
+        );
+
+        // Map emails to existence in this partner-batch combination
+        const result = new Map<string, boolean>();
+        for (const email of emails) {
+            const userId = userMap.get(email);
+            result.set(email, userId ? relationshipSet.has(userId.toString()) : false);
+        }
+
+        return result;
     }
 
     async getCandidatesByPartnerId(partner_id: string): Promise<CandidateWithBatch[]> {
-        const candidates = await this.userModel.aggregate([
+        const candidates = await this.partnerCandidateModel.aggregate([
             { $match: { partner_id: new mongoose.Types.ObjectId(partner_id) } },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'candidate_id',
+                    foreignField: '_id',
+                    as: 'candidate'
+                }
+            },
+            {
+                $unwind: '$candidate'
+            },
             {
                 $lookup: {
                     from: 'candidatebatches',
@@ -92,19 +171,20 @@ export class CandidatesRepository {
             },
             {
                 $project: {
-                    _id: 1,
-                    firstname: 1,
-                    lastname: 1,
-                    email: 1,
-                    batch_id: 1,
+                    _id: '$candidate._id',
+                    firstname: '$candidate.firstname',
+                    lastname: '$candidate.lastname',
+                    email: '$candidate.email',
+                    batch_id: '$batch_id',
                     batch_name: '$batch.batch_name',
-                    is_active: 1,
-                    is_paid_for: 1,
-                    invite_status: 1,
-                    invite_sent_at: 1,
-                    invite_accepted_at: 1,
-                    createdAt: 1,
-                    updatedAt: 1
+                    is_active: '$candidate.is_active',
+                    is_paid_for: '$is_paid_for',
+                    invite_status: '$invite_status',
+                    invite_sent_at: '$invite_sent_at',
+                    invite_accepted_at: '$invite_accepted_at',
+                    partner_candidate_id: '$_id',
+                    createdAt: '$createdAt',
+                    updatedAt: '$updatedAt'
                 }
             },
             { $sort: { createdAt: -1 } }
@@ -120,8 +200,19 @@ export class CandidatesRepository {
     ): Promise<CandidateWithBatch[]> {
         const skip = (page - 1) * limit;
 
-        const candidates = await this.userModel.aggregate([
+        const candidates = await this.partnerCandidateModel.aggregate([
             { $match: { partner_id: new mongoose.Types.ObjectId(partner_id) } },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'candidate_id',
+                    foreignField: '_id',
+                    as: 'candidate'
+                }
+            },
+            {
+                $unwind: '$candidate'
+            },
             {
                 $lookup: {
                     from: 'candidatebatches',
@@ -138,19 +229,20 @@ export class CandidatesRepository {
             },
             {
                 $project: {
-                    _id: 1,
-                    firstname: 1,
-                    lastname: 1,
-                    email: 1,
-                    batch_id: 1,
+                    _id: '$candidate._id',
+                    firstname: '$candidate.firstname',
+                    lastname: '$candidate.lastname',
+                    email: '$candidate.email',
+                    batch_id: '$batch_id',
                     batch_name: '$batch.batch_name',
-                    is_active: 1,
-                    is_paid_for: 1,
-                    invite_status: 1,
-                    invite_sent_at: 1,
-                    invite_accepted_at: 1,
-                    createdAt: 1,
-                    updatedAt: 1
+                    is_active: '$candidate.is_active',
+                    is_paid_for: '$is_paid_for',
+                    invite_status: '$invite_status',
+                    invite_sent_at: '$invite_sent_at',
+                    invite_accepted_at: '$invite_accepted_at',
+                    partner_candidate_id: '$_id',
+                    createdAt: '$createdAt',
+                    updatedAt: '$updatedAt'
                 }
             },
             { $sort: { createdAt: -1 } },
@@ -185,25 +277,81 @@ export class CandidatesRepository {
             lastname: string;
             email: string;
         }>
-    ): Promise<IUser[]> {
-        const candidates = candidatesData.map(data => ({
-            firstname: data.firstname,
-            lastname: data.lastname,
-            email: data.email,
-            partner_id: new mongoose.Types.ObjectId(data.partner_id),
-            batch_id: new mongoose.Types.ObjectId(data.batch_id),
-            is_active: true,
-            is_onboarding_completed: false,
-            is_paid_for: false,
-            invite_status: 'pending' as const,
-            invite_sent_at: new Date()
-        }));
-
-        return await this.userModel.insertMany(candidates, { ordered: false });
+    ): Promise<Array<{ user: IUser; partnerCandidate: IPartnerCandidate }>> {
+        // Get unique emails
+        const emails = [...new Set(candidatesData.map(d => d.email))];
+        
+        // Find existing users
+        const existingUsers = await this.userModel.find(
+            { email: { $in: emails } }
+        ).lean();
+        
+        const existingUserMap = new Map(existingUsers.map(u => [u.email, u]));
+        
+        // Separate into existing and new users
+        const newUserData: Array<{
+            firstname: string;
+            lastname: string;
+            email: string;
+            is_active: boolean;
+            is_onboarding_completed: boolean;
+            password: string;
+        }> = [];
+        
+        for (const data of candidatesData) {
+            if (!existingUserMap.has(data.email)) {
+                newUserData.push({
+                    firstname: data.firstname,
+                    lastname: data.lastname,
+                    email: data.email,
+                    is_active: true,
+                    is_onboarding_completed: false,
+                    password: '' // Will be set when user accepts invite
+                });
+            }
+        }
+        
+        // Bulk create new users
+        let createdUsers: any[] = [];
+        if (newUserData.length > 0) {
+            createdUsers = await this.userModel.insertMany(newUserData, { ordered: false });
+            // Add to map
+            for (const user of createdUsers) {
+                existingUserMap.set(user.email, user.toObject ? user.toObject() : user);
+            }
+        }
+        
+        // Create partner-candidate relationships
+        const partnerCandidateData = candidatesData.map(data => {
+            const user = existingUserMap.get(data.email);
+            return {
+                partner_id: new mongoose.Types.ObjectId(data.partner_id),
+                candidate_id: user!._id,
+                batch_id: new mongoose.Types.ObjectId(data.batch_id),
+                is_paid_for: false,
+                invite_status: 'pending' as const,
+                invite_sent_at: new Date()
+            };
+        });
+        
+        const partnerCandidates = await this.partnerCandidateModel.insertMany(
+            partnerCandidateData,
+            { ordered: false }
+        );
+        
+        // Combine results
+        return candidatesData.map((data, index) => {
+            const user = existingUserMap.get(data.email)!;
+            const partnerCandidate = partnerCandidates[index]!;
+            return {
+                user: user as IUser,
+                partnerCandidate: (partnerCandidate.toObject ? partnerCandidate.toObject() : partnerCandidate) as IPartnerCandidate
+            };
+        });
     }
 
     async getCandidateCountByPartnerId(partner_id: string): Promise<number> {
-        return await this.userModel.countDocuments({
+        return await this.partnerCandidateModel.countDocuments({
             partner_id: new mongoose.Types.ObjectId(partner_id)
         });
     }
@@ -222,26 +370,33 @@ export class CandidatesRepository {
         .lean();
     }
 
-    async updateCandidatePaymentStatus(candidate_id: string, is_paid_for: boolean): Promise<IUser | null> {
-        return await this.userModel.findByIdAndUpdate(
-            candidate_id,
+    async updateCandidatePaymentStatus(
+        partner_id: string,
+        candidate_id: string,
+        is_paid_for: boolean
+    ): Promise<IPartnerCandidate | null> {
+        return await this.partnerCandidateModel.findOneAndUpdate(
+            {
+                partner_id: new mongoose.Types.ObjectId(partner_id),
+                candidate_id: new mongoose.Types.ObjectId(candidate_id)
+            },
             { is_paid_for },
             { new: true }
         ).lean();
     }
 
     async updateCandidateInviteStatus(
-        candidate_id: string,
+        partner_candidate_id: string,
         invite_status: 'pending' | 'accepted' | 'expired'
-    ): Promise<IUser | null> {
+    ): Promise<IPartnerCandidate | null> {
         const updateData: any = { invite_status };
         
         if (invite_status === 'accepted') {
             updateData.invite_accepted_at = new Date();
         }
 
-        return await this.userModel.findByIdAndUpdate(
-            candidate_id,
+        return await this.partnerCandidateModel.findByIdAndUpdate(
+            partner_candidate_id,
             updateData,
             { new: true }
         ).lean();
@@ -249,5 +404,19 @@ export class CandidatesRepository {
 
     async getCandidateById(candidate_id: string): Promise<IUser | null> {
         return await this.userModel.findById(candidate_id).lean();
+    }
+
+    async getPartnerCandidateById(partner_candidate_id: string): Promise<IPartnerCandidate | null> {
+        return await this.partnerCandidateModel.findById(partner_candidate_id).lean();
+    }
+
+    async getPartnerCandidateByIds(
+        partner_id: string,
+        candidate_id: string
+    ): Promise<IPartnerCandidate | null> {
+        return await this.partnerCandidateModel.findOne({
+            partner_id: new mongoose.Types.ObjectId(partner_id),
+            candidate_id: new mongoose.Types.ObjectId(candidate_id)
+        }).lean();
     }
 }

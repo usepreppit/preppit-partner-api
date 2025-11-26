@@ -67,10 +67,10 @@ export default (app: Router) => {
         candidatesController.MarkCandidateAsPaid.bind(candidatesController)
     );
 
-    // Accept candidate invite (public - no auth required for this endpoint)
-    // Note: This route should be registered without authMiddleware if used publicly
+    // Accept candidate invite (uses partner_candidate_id)
+    // Note: This should be accessible via a unique link sent to the candidate
     route.post(
-        '/:candidate_id/accept-invite',
+        '/:partner_candidate_id/accept-invite',
         candidatesController.AcceptCandidateInvite.bind(candidatesController)
     );
 };

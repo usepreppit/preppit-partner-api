@@ -152,15 +152,15 @@ export class CandidatesController {
 
     async AcceptCandidateInvite(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
-            const { candidate_id } = req.params;
+            const { partner_candidate_id } = req.params;
 
-            if (!candidate_id) {
-                ApiResponse.badRequest('candidate_id is required').send(res);
+            if (!partner_candidate_id) {
+                ApiResponse.badRequest('partner_candidate_id is required').send(res);
                 return;
             }
 
             try {
-                const candidate = await this.candidatesService.acceptCandidateInvite(candidate_id);
+                const candidate = await this.candidatesService.acceptCandidateInvite(partner_candidate_id);
 
                 ApiResponse.ok(candidate, 'Invite accepted successfully').send(res);
             } catch (error) {

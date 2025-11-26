@@ -44,13 +44,17 @@ export class CandidatesService {
                 throw new ValidationError('Batch does not belong to this partner');
             }
 
-            // Check if candidate already exists
-            const exists = await this.candidatesRepository.checkCandidateExists(data.email);
+            // Check if candidate already exists in this batch
+            const exists = await this.candidatesRepository.checkPartnerCandidateExists(
+                partner_id,
+                data.batch_id,
+                data.email
+            );
             if (exists) {
-                throw new ValidationError('Candidate with this email already exists');
+                throw new ValidationError('Candidate with this email already exists in this batch');
             }
 
-            const candidate = await this.candidatesRepository.createCandidate(
+            const result = await this.candidatesRepository.createCandidate(
                 partner_id,
                 data.batch_id,
                 data.firstname,
@@ -58,8 +62,8 @@ export class CandidatesService {
                 data.email
             );
 
-            this.logger.info(`Candidate created: ${candidate._id} for partner: ${partner_id}`);
-            return candidate;
+            this.logger.info(`Candidate created: ${result.user._id} for partner: ${partner_id}`);
+            return result.user;
         } catch (error: any) {
             if (error instanceof ValidationError) {
                 throw error;
@@ -179,10 +183,14 @@ export class CandidatesService {
                 });
             }
 
-            // Second pass: Check for existing emails (single DB call)
+            // Second pass: Check for existing emails in this batch (single DB call)
             const validRows = parsedRows.filter(row => row.isValid);
             const emailsToCheck = validRows.map(row => row.email);
-            const existingEmails = await this.candidatesRepository.checkMultipleCandidatesExist(emailsToCheck);
+            const existingInBatch = await this.candidatesRepository.checkMultiplePartnerCandidatesExist(
+                partner_id,
+                batch_id,
+                emailsToCheck
+            );
 
             // Separate valid candidates from those with errors
             const candidatesToCreate: Array<{
@@ -201,12 +209,12 @@ export class CandidatesService {
                         email: row.email || 'N/A',
                         error: row.error!
                     });
-                } else if (existingEmails.has(row.email)) {
+                } else if (existingInBatch.get(row.email)) {
                     results.failed++;
                     results.errors.push({
                         row: row.rowNumber,
                         email: row.email,
-                        error: 'Email already exists'
+                        error: 'Candidate already exists in this batch'
                     });
                 } else {
                     candidatesToCreate.push({
@@ -222,23 +230,24 @@ export class CandidatesService {
             // Third pass: Bulk create candidates (single DB call)
             if (candidatesToCreate.length > 0) {
                 try {
-                    const createdCandidates = await this.candidatesRepository.createCandidatesBulk(candidatesToCreate);
+                    const createdResults = await this.candidatesRepository.createCandidatesBulk(candidatesToCreate);
                     
-                    results.successful = createdCandidates.length;
-                    results.candidates = createdCandidates.map(candidate => ({
-                        _id: candidate._id as string,
-                        firstname: candidate.firstname,
-                        lastname: candidate.lastname || '',
-                        email: candidate.email,
+                    results.successful = createdResults.length;
+                    results.candidates = createdResults.map(result => ({
+                        _id: result.user._id as string,
+                        firstname: result.user.firstname,
+                        lastname: result.user.lastname || '',
+                        email: result.user.email,
                         batch_id: batch_id,
                         batch_name: batch.batch_name,
-                        is_active: candidate.is_active,
-                        is_paid_for: candidate.is_paid_for || false,
-                        invite_status: candidate.invite_status || 'pending',
-                        invite_sent_at: candidate.invite_sent_at,
-                        invite_accepted_at: candidate.invite_accepted_at,
-                        createdAt: candidate.createdAt!,
-                        updatedAt: candidate.updatedAt!
+                        is_active: result.user.is_active,
+                        is_paid_for: result.partnerCandidate.is_paid_for || false,
+                        invite_status: result.partnerCandidate.invite_status || 'pending',
+                        invite_sent_at: result.partnerCandidate.invite_sent_at,
+                        invite_accepted_at: result.partnerCandidate.invite_accepted_at,
+                        partner_candidate_id: result.partnerCandidate._id as string,
+                        createdAt: result.partnerCandidate.createdAt!,
+                        updatedAt: result.partnerCandidate.updatedAt!
                     }));
                 } catch (bulkError: any) {
                     // Handle any bulk insert errors
@@ -358,24 +367,34 @@ export class CandidatesService {
         }
     }
 
-    async markCandidateAsPaid(partner_id: string, candidate_id: string): Promise<IUser> {
+    async markCandidateAsPaid(partner_id: string, candidate_id: string): Promise<any> {
         try {
-            // Verify candidate belongs to partner
+            // Verify candidate exists
             const candidate = await this.candidatesRepository.getCandidateById(candidate_id);
             if (!candidate) {
                 throw new ValidationError('Candidate not found');
             }
-            if (candidate.partner_id?.toString() !== partner_id) {
-                throw new ValidationError('Candidate does not belong to this partner');
-            }
 
-            const updated = await this.candidatesRepository.updateCandidatePaymentStatus(candidate_id, true);
+            // Update payment status in partner-candidate relationship
+            const updated = await this.candidatesRepository.updateCandidatePaymentStatus(
+                partner_id,
+                candidate_id,
+                true
+            );
             if (!updated) {
-                throw new ApiError(500, 'Failed to update payment status');
+                throw new ValidationError('Candidate does not belong to this partner or batch not found');
             }
 
             this.logger.info(`Candidate ${candidate_id} marked as paid by partner ${partner_id}`);
-            return updated;
+            
+            // Return combined user and relationship data
+            return {
+                ...candidate,
+                is_paid_for: updated.is_paid_for,
+                invite_status: updated.invite_status,
+                invite_sent_at: updated.invite_sent_at,
+                invite_accepted_at: updated.invite_accepted_at
+            };
         } catch (error: any) {
             if (error instanceof ValidationError || error instanceof ApiError) {
                 throw error;
@@ -385,28 +404,45 @@ export class CandidatesService {
         }
     }
 
-    async acceptCandidateInvite(candidate_id: string): Promise<IUser> {
+    async acceptCandidateInvite(partner_candidate_id: string): Promise<any> {
         try {
-            const candidate = await this.candidatesRepository.getCandidateById(candidate_id);
-            if (!candidate) {
-                throw new ValidationError('Candidate not found');
+            const partnerCandidate = await this.candidatesRepository.getPartnerCandidateById(partner_candidate_id);
+            if (!partnerCandidate) {
+                throw new ValidationError('Partner candidate relationship not found');
             }
 
-            if (candidate.invite_status === 'accepted') {
+            if (partnerCandidate.invite_status === 'accepted') {
                 throw new ValidationError('Invite already accepted');
             }
 
-            if (candidate.invite_status === 'expired') {
+            if (partnerCandidate.invite_status === 'expired') {
                 throw new ValidationError('Invite has expired');
             }
 
-            const updated = await this.candidatesRepository.updateCandidateInviteStatus(candidate_id, 'accepted');
+            const updated = await this.candidatesRepository.updateCandidateInviteStatus(
+                partner_candidate_id,
+                'accepted'
+            );
             if (!updated) {
                 throw new ApiError(500, 'Failed to accept invite');
             }
 
-            this.logger.info(`Candidate ${candidate_id} accepted invite`);
-            return updated;
+            // Get user data
+            const candidate = await this.candidatesRepository.getCandidateById(
+                partnerCandidate.candidate_id as string
+            );
+
+            this.logger.info(`Partner candidate ${partner_candidate_id} accepted invite`);
+            
+            // Return combined data
+            return {
+                ...candidate,
+                is_paid_for: updated.is_paid_for,
+                invite_status: updated.invite_status,
+                invite_sent_at: updated.invite_sent_at,
+                invite_accepted_at: updated.invite_accepted_at,
+                partner_candidate_id: updated._id
+            };
         } catch (error: any) {
             if (error instanceof ValidationError || error instanceof ApiError) {
                 throw error;
