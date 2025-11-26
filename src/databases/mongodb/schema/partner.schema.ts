@@ -102,6 +102,21 @@ const schema = new Schema<IPartner>(
       type: String,
       enum: ['PEBC_OSCE', 'IELTS', 'PLAB', 'USMLE', 'NCLEX'],
     }],
+    // Next Steps tracking
+    has_added_candidates: {
+      type: Boolean,
+      default: false,
+    },
+    first_candidate_added_at: {
+      type: Date,
+    },
+    payment_method_setup: {
+      type: Boolean,
+      default: false,
+    },
+    payment_method_setup_at: {
+      type: Date,
+    },
   },
   {
     timestamps: true,

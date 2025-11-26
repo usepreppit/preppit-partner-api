@@ -6,70 +6,78 @@ import { ApiResponse } from '../../helpers/response.helper';
 
 @injectable()
 export class DashboardController {
-    constructor(
-        @inject(DashboardService) private readonly dashboardService: DashboardService,
-        @inject(Logger) private readonly logger: Logger
-    ) {}
- 
-    async PersonalAnalytics(req: Request, res: Response, next: NextFunction): Promise<void> {
-        try {
-            const user_id = req.curr_user?._id as string;
-            try {
-                const profile_analytics = await this.dashboardService.GetProfileAnalytics(user_id);
+	constructor(
+		@inject(DashboardService) private readonly dashboardService: DashboardService,
+		@inject(Logger) private readonly logger: Logger
+	) { }
 
-                ApiResponse.ok(profile_analytics, 'Dashboard profile analytics').send(res);
-            } catch (error) {
-                this.logger.error('Error getting user dashboard analytics', error);
-                next(error);
-            };
+	async GetPartnerDashboard(req: Request, res: Response, next: NextFunction): Promise<void> {
+		try {
+			const partner_id = req.curr_user?._id?.toString() as string;
+			const account_type = req.account_type;
 
-        } catch (error) {
-            next(error);
-        }
-    }
+			try {
+				const dashboardData = await this.dashboardService.GetPartnerDashboard(partner_id, account_type);
+				ApiResponse.ok(dashboardData, 'Dashboard data fetched successfully').send(res);
+			} catch (error) {
+				this.logger.error('Error fetching partner dashboard', error);
+				next(error);
+			}
 
-    async RecentActivity(req: Request, res: Response, next: NextFunction): Promise<void> {
-        try {
-            const user_id = req.curr_user?._id as string;
-            const recent_activities = await this.dashboardService.GetRecentActivities(user_id);
-            ApiResponse.ok(recent_activities, 'Dashboard recent activities').send(res);
-        } catch (error) {
-            next(error);
-        }
-    }
+		} catch (error) {
+			next(error);
+		}
+	}
 
-    
-    async PerformanceProgress(req: Request, res: Response, next: NextFunction): Promise<void> {
-        try {
-            const user_id = req.curr_user?._id as string;
-            try {
-                const performance_progress = await this.dashboardService.GetPerformanceProgress(user_id);
+	async GetRecentActivities(req: Request, res: Response, next: NextFunction): Promise<void> {
+		try {
+			const partner_id = req.curr_user?._id?.toString() as string;
+			const limit = parseInt(req.query.limit as string) || 10;
 
-                ApiResponse.ok(performance_progress, 'Dashboard performance progress').send(res);
-            } catch (error) {
-                this.logger.error('Error fetching performance progress', error);
-                next(error);
-            };
-            
-        } catch (error) {
-            next(error);
-        }
-    }
+			try {
+				const activities = await this.dashboardService.GetRecentActivities(partner_id, limit);
+				ApiResponse.ok(activities, 'Recent activities fetched successfully').send(res);
+			} catch (error) {
+				this.logger.error('Error fetching recent activities', error);
+				next(error);
+			}
 
-    async PracticeTime(req: Request, res: Response, next: NextFunction): Promise<void> {
-        try {
-            const user_id = req.curr_user?._id as string;
-            try {
-                const recent_activities = await this.dashboardService.GetPracticeTimeAnalytics(user_id);
+		} catch (error) {
+			next(error);
+		}
+	}
 
-                ApiResponse.ok(recent_activities, 'Dashboard recent activities').send(res);
-            } catch (error) {
-                this.logger.error('Error fetching recent activities', error);
-                next(error);
-            };
-            
-        } catch (error) {
-            next(error);
-        }
-    }
+	async MarkCandidateAdded(req: Request, res: Response, next: NextFunction): Promise<void> {
+		try {
+			const partner_id = req.curr_user?._id?.toString() as string;
+
+			try {
+				const result = await this.dashboardService.MarkCandidateAdded(partner_id);
+				ApiResponse.ok(result, 'Candidate added step marked as complete').send(res);
+			} catch (error) {
+				this.logger.error('Error marking candidate added', error);
+				next(error);
+			}
+
+		} catch (error) {
+			next(error);
+		}
+	}
+
+	async MarkPaymentMethodSetup(req: Request, res: Response, next: NextFunction): Promise<void> {
+		try {
+			const partner_id = req.curr_user?._id?.toString() as string;
+
+			try {
+				const result = await this.dashboardService.MarkPaymentMethodSetup(partner_id);
+				ApiResponse.ok(result, 'Payment method setup step marked as complete').send(res);
+			} catch (error) {
+				this.logger.error('Error marking payment setup', error);
+				next(error);
+			}
+
+		} catch (error) {
+			next(error);
+		}
+	}
 }

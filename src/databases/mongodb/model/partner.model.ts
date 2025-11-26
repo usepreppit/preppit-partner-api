@@ -28,6 +28,11 @@ export interface IPartner extends Document {
   organization_logo?: string;
   preferred_currency?: 'USD' | 'CAD' | 'NGN' | 'GBP' | 'EUR';
   exam_types?: ('PEBC_OSCE' | 'IELTS' | 'PLAB' | 'USMLE' | 'NCLEX')[];
+  // Next Steps tracking
+  has_added_candidates?: boolean;
+  first_candidate_added_at?: Date;
+  payment_method_setup?: boolean;
+  payment_method_setup_at?: Date;
   createdAt?: Date;
   updatedAt?: Date;
 }
