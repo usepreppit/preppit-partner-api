@@ -3,6 +3,8 @@ import { Logger } from './../../startup/logger';
 import { ApiError, ValidationError } from '../../helpers/error.helper';
 import { Request } from 'express';
 import { UserRepository } from './../users/models/user.repository';
+import { AdminRepository } from './../users/models/admin.repository';
+import { PartnerRepository } from './../users/models/partner.repository';
 import { comparePasswords, hashPassword } from '../../helpers/password.helper';
 import { uploadToCFBucket } from '../../helpers/upload_to_s3.helper';
 
@@ -12,11 +14,59 @@ export class ProfileService {
     constructor(
 		@inject(Logger) private readonly logger: Logger,
         @inject(UserRepository) private readonly userRepository: UserRepository,
+        @inject(AdminRepository) private readonly adminRepository: AdminRepository,
+        @inject(PartnerRepository) private readonly partnerRepository: PartnerRepository,
     ) {}
 
-	async ChangePassword(user_id: string, old_password: string, new_password: string) {
+	// Helper method to get user and account type
+	private async getUserWithAccountType(user_id: string, account_type?: 'user' | 'admin' | 'partner') {
+		let curr_user: any = null;
+		let userAccountType: 'user' | 'admin' | 'partner' = 'user';
+
+		if (account_type === 'admin') {
+			curr_user = await this.adminRepository.findById(user_id);
+			userAccountType = 'admin';
+		} else if (account_type === 'partner') {
+			curr_user = await this.partnerRepository.findById(user_id);
+			userAccountType = 'partner';
+		} else {
+			curr_user = await this.userRepository.findById(user_id);
+			userAccountType = 'user';
+		}
+
+		return { user: curr_user, accountType: userAccountType };
+	}
+
+	async GetProfile(user_id: string, account_type?: 'user' | 'admin' | 'partner') {
 		try {
-			const curr_user = await this.userRepository.findById(user_id, '+password');
+			const { user, accountType } = await this.getUserWithAccountType(user_id, account_type);
+			
+			if(!user) {
+				throw new ValidationError("Invalid user");
+			}
+
+			return {
+				...user,
+				account_type: accountType
+			};
+		} catch (error) {
+			this.logger.error(`Error fetching user profile: ${error}`);
+			throw new ApiError(400, 'Error fetching user profile', error);
+		}
+	}
+
+	async ChangePassword(user_id: string, old_password: string, new_password: string, account_type?: 'user' | 'admin' | 'partner') {
+		try {
+			let curr_user: any = null;
+			
+			// Get user from appropriate table
+			if (account_type === 'admin') {
+				curr_user = await this.adminRepository.findById(user_id, '+password');
+			} else if (account_type === 'partner') {
+				curr_user = await this.partnerRepository.findById(user_id, '+password');
+			} else {
+				curr_user = await this.userRepository.findById(user_id, '+password');
+			}
 			if(!curr_user) {
 				throw new ValidationError("Invalid user");
 			}
@@ -30,35 +80,69 @@ export class ProfileService {
 
 			//Set the new password
 			const hash_new_pass = await hashPassword(new_password);
-			const update_password = await this.userRepository.updateById(user_id, { password: hash_new_pass });
+			
+			// Update password in appropriate table
+			if (account_type === 'admin') {
+				await this.adminRepository.updateById(user_id, { password: hash_new_pass });
+			} else if (account_type === 'partner') {
+				await this.partnerRepository.updateById(user_id, { password: hash_new_pass });
+			} else {
+				await this.userRepository.updateById(user_id, { password: hash_new_pass });
+			}
 
-			return update_password;
+			return { message: 'Password updated successfully' };
 		} catch (error) {
 			this.logger.error(`Error Changing user password: ${error}`);
 			throw new ApiError(400, 'Error Changing user password', error);
 		}
 	}
 
-	async UpdateProfile(user_id: string, user_details: object) {
+	async UpdateProfile(user_id: string, user_details: object, account_type?: 'user' | 'admin' | 'partner') {
 		try {
-			const curr_user = await this.userRepository.findById(user_id);
+			let curr_user: any = null;
+			
+			// Get user from appropriate table
+			if (account_type === 'admin') {
+				curr_user = await this.adminRepository.findById(user_id);
+			} else if (account_type === 'partner') {
+				curr_user = await this.partnerRepository.findById(user_id);
+			} else {
+				curr_user = await this.userRepository.findById(user_id);
+			}
 
 			if(!curr_user) {
 				throw new ValidationError("Invalid user");
 			}
 
 			//check if the current user password matches the old password entered
-			const update_profile = await this.userRepository.updateById(user_id, user_details);
-			return update_profile;
+			// Update profile in appropriate table
+			if (account_type === 'admin') {
+				await this.adminRepository.updateById(user_id, user_details);
+			} else if (account_type === 'partner') {
+				await this.partnerRepository.updateById(user_id, user_details);
+			} else {
+				await this.userRepository.updateById(user_id, user_details);
+			}
+
+			return { message: 'Profile updated successfully' };
 		} catch (error) {
 			this.logger.error(`Error Updating user profile: ${error}`);
 			throw new ApiError(400, 'Error Updating user profile', error);
 		}
 	}
 
-	async UpdateProfilePicture(user_id: string, req: Request) {
+	async UpdateProfilePicture(user_id: string, req: Request, account_type?: 'user' | 'admin' | 'partner') {
 		try {
-			const curr_user = await this.userRepository.findById(user_id);
+			let curr_user: any = null;
+			
+			// Get user from appropriate table
+			if (account_type === 'admin') {
+				curr_user = await this.adminRepository.findById(user_id);
+			} else if (account_type === 'partner') {
+				curr_user = await this.partnerRepository.findById(user_id);
+			} else {
+				curr_user = await this.userRepository.findById(user_id);
+			}
 			if(!curr_user) {
 				throw new ValidationError("Invalid user");
 			}
@@ -72,26 +156,50 @@ export class ProfileService {
 			const profile_picture = upload_profile.document_url;
 			console.log("profile_picture", profile_picture);
 			//check if the current user password matches the old password entered
-			const update_profile_picture = await this.userRepository.updateById(user_id, { profile_picture });
+			// Update profile picture in appropriate table
+			if (account_type === 'admin') {
+				await this.adminRepository.updateById(user_id, { profile_picture });
+			} else if (account_type === 'partner') {
+				await this.partnerRepository.updateById(user_id, { profile_picture });
+			} else {
+				await this.userRepository.updateById(user_id, { profile_picture });
+			}
 
-			return update_profile_picture;
+			return { message: 'Profile picture updated successfully', profile_picture };
 		} catch (error) {
 			this.logger.error(`Error Updating user profile picture: ${error}`);
 			throw new ApiError(400, 'Error Updating user profile picture', error);
 		}
 	}
 
-	async RemoveProfilePicture(user_id: string) {
+	async RemoveProfilePicture(user_id: string, account_type?: 'user' | 'admin' | 'partner') {
 		try {
-			const curr_user = await this.userRepository.findById(user_id);
+			let curr_user: any = null;
+			
+			// Get user from appropriate table
+			if (account_type === 'admin') {
+				curr_user = await this.adminRepository.findById(user_id);
+			} else if (account_type === 'partner') {
+				curr_user = await this.partnerRepository.findById(user_id);
+			} else {
+				curr_user = await this.userRepository.findById(user_id);
+			}
 
 			if(!curr_user) {
 				throw new ValidationError("Invalid user");
 			}
 
 			//check if the current user password matches the old password entered
-			const update_profile_picture = await this.userRepository.updateById(user_id, { profile_picture_url: '' });
-			return update_profile_picture;
+			// Remove profile picture in appropriate table
+			if (account_type === 'admin') {
+				await this.adminRepository.updateById(user_id, { profile_picture_url: '' });
+			} else if (account_type === 'partner') {
+				await this.partnerRepository.updateById(user_id, { profile_picture_url: '' });
+			} else {
+				await this.userRepository.updateById(user_id, { profile_picture_url: '' });
+			}
+
+			return { message: 'Profile picture removed successfully' };
 		} catch (error) {
 			this.logger.error(`Error Removing user profile picture: ${error}`);
 			throw new ApiError(400, 'Error Removing user profile picture', error);

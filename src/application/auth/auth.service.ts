@@ -1,14 +1,17 @@
 import { inject, injectable } from 'inversify';
 import { UserRepository } from '../users/models/user.repository';
+import { AdminRepository } from '../users/models/admin.repository';
+import { PartnerRepository } from '../users/models/partner.repository';
 import { Logger } from './../../startup/logger';
 import { IUser } from '../users/types/user.types';
+import { IAdmin } from '../users/types/admin.types';
+import { IPartner } from '../users/types/partner.types';
 import { comparePasswords, hashPassword } from './../../helpers/password.helper';
 import jwt from 'jsonwebtoken';
 import { ApiError } from '../../helpers/error.helper';
 import { PostmarkEmailService } from './../../helpers/email/postmark.helper';
 import { randomBytes } from 'crypto';
 import { getTokens } from './../../helpers/thirdparty/googleapis.helper';
-import { ReferralsRepository } from '../referrals/models/referrals.repository';
 import { postmarkTemplates } from '../../templates/postmark.templates';
 
 const salt = randomBytes(32).toString('hex');
@@ -25,19 +28,32 @@ const salt = randomBytes(32).toString('hex');
 export class AuthService {
     constructor(
 		@inject(UserRepository) private readonly userRepository: UserRepository,
-		@inject(ReferralsRepository) private readonly referralRepository: ReferralsRepository,
+		@inject(AdminRepository) private readonly adminRepository: AdminRepository,
+		@inject(PartnerRepository) private readonly partnerRepository: PartnerRepository,
 		@inject(PostmarkEmailService) private readonly emailService: PostmarkEmailService,
 		@inject(Logger) private readonly logger: Logger
     ) {} 
 
+	// Helper method to determine account type based on email
+	private getAccountType(email: string): 'admin' | 'partner' {
+		return email.toLowerCase().endsWith('@usepreppit.com') ? 'admin' : 'partner';
+	}
+
 	//User Login
-    async Login(email: string, password: string): Promise<{ token: string; }> {
+    async Login(email: string, password: string): Promise<{ token: string; accountType: 'admin' | 'partner' }> {
 		try {
-			const user = await this.userRepository.findByEmail(email, true);
+			const accountType = this.getAccountType(email);
+			let user: IAdmin | IPartner | null = null;
+
+			// Check the appropriate table based on email domain
+			if (accountType === 'admin') {
+				user = await this.adminRepository.findByEmail(email, true);
+			} else {
+				user = await this.partnerRepository.findByEmail(email, true);
+			}
 
 			if (!user) {
 				this.logger.warn(`Login attempt for non-existent email: ${email}`);
-				// throw new NotFoundError('Invalid credentials');
 				throw new ApiError(401, 'Invalid credentials');
 			}
 
@@ -55,27 +71,24 @@ export class AuthService {
 			}
 
 			//JWT generate for the user
-			const token = this.generateToken(user); 
-			return { token };
+			const token = this.generateToken(user, accountType); 
+			return { token, accountType };
 		} catch (error) {
 			this.logger.error(`Login failed for ${email}: ${error}`);
 			throw new ApiError(400, 'Auth Failed', error);
 		}
     }
 
-	async CreateUser(user: IUser, referrer_code: string | undefined): Promise<Omit<IUser, 'password'>> {
+	async CreateUser(user: IUser | IAdmin | IPartner, referrer_code: string | undefined): Promise<Omit<IUser | IAdmin | IPartner, 'password'>> {
 		try {
 			console.log(referrer_code);
 			// hash the password first
 			const hashedPassword = await hashPassword(user.password); //hash the password from the password helper
 			user.password = hashedPassword; //update the user password with the hashed password
 
-
-
-			// const sending_url = process.env.SENDING_URL; //frontend URl, Need Samuel to provide Link for the Sending URL
+			const accountType = this.getAccountType(user.email);
 			const api_url = process.env.API_URL; //backend URL
 			
-
 			// return the verification token and send mail
 			const verify_token = salt;
 			const activation_url = `api/auth/verify_email?email=${user.email}&verify_token=${verify_token}`;
@@ -83,22 +96,35 @@ export class AuthService {
 
 			//update the save record with the verification token
 			user.verification_token = verify_token;
-			const referral_code = await this.generateReferralCode();
-			user.referral_code = referral_code;
 
-			const create_new_user = await this.userRepository.create(user);
+			let create_new_user: IAdmin | IPartner;
+
+			// Create user in appropriate table based on email domain
+			if (accountType === 'admin') {
+				const adminData = {
+					...user,
+					account_type: 'admin' as const,
+				};
+				create_new_user = await this.adminRepository.create(adminData);
+			} else {
+				const partnerData = {
+					...user,
+					account_type: 'partner' as const,
+				};
+				create_new_user = await this.partnerRepository.create(partnerData);
+			}
 
 			if(!create_new_user._id) {
 				throw new Error(`Couldn't create user at this time, please try again later.`);
 			}
 
-			if(referrer_code) {//Some referred the user
-				const get_referrer_details = await this.userRepository.findSingleUserByFilter({ referral_code: referrer_code });
-				if(get_referrer_details) {
-					//We were able to get a user record, save it into the referrers
-					await this.referralRepository.createNewReferralRecord(create_new_user._id as string, get_referrer_details._id as string);
-				}
-			}
+			// Only handle referrals for partners (if needed)
+			// if(referrer_code && accountType === 'partner') {
+			// 	const get_referrer_details = await this.partnerRepository.findSinglePartnerByFilter({ referral_code: referrer_code });
+			// 	if(get_referrer_details) {
+			// 		await this.referralRepository.createNewReferralRecord(create_new_user._id as string, get_referrer_details._id as string);
+			// 	}
+			// }
 
 			//return the user without the password
 			Reflect.deleteProperty(user, 'password');
@@ -122,7 +148,16 @@ export class AuthService {
 
 	async VerifyEmail(email: string, hash: string): Promise<void> {
 		try {
-			const user = await this.userRepository.findByEmail(email, true);
+			const accountType = this.getAccountType(email);
+			let user: IAdmin | IPartner | null = null;
+
+			// Check the appropriate table based on email domain
+			if (accountType === 'admin') {
+				user = await this.adminRepository.findByEmail(email, true);
+			} else {
+				user = await this.partnerRepository.findByEmail(email, true);
+			}
+
 			if (!user) {
 				throw new ApiError(500, 'User not found, Please use the link sent to your email.');
 			}
@@ -143,7 +178,12 @@ export class AuthService {
 				if (!user._id) {
 					throw new Error('User ID is undefined');
 				}
-				await this.userRepository.updateById(user._id.toString(), { is_active: true });
+
+				if (accountType === 'admin') {
+					await this.adminRepository.updateById(user._id.toString(), { is_active: true });
+				} else {
+					await this.partnerRepository.updateById(user._id.toString(), { is_active: true });
+				}
 			}
 
 			//send email to the user
@@ -161,9 +201,10 @@ export class AuthService {
 	}
 
 	//social login
-	async SocialLogin(channel: string, code: string, redirect_uri: string): Promise<{ token: string }> {
+	async SocialLogin(channel: string, code: string, redirect_uri: string): Promise<{ token: string; accountType: 'admin' | 'partner' }> {
 		try {
 			let user_data: any;
+			let accountType: 'admin' | 'partner';
 			switch (channel) {
 				case 'google':
 					const user_token_and_profile = await getTokens(code, redirect_uri);
@@ -171,12 +212,23 @@ export class AuthService {
 						throw new ApiError(400, 'Invalid Authentication Code or Error retrieving access token');
 					}
 
-					const user = await this.userRepository.findByEmail(user_token_and_profile.email, true);
-					if (!user) {
-						throw new ApiError(400, 'User not found, please register first');
+					accountType = this.getAccountType(user_token_and_profile.email);
+					
+					// Check the appropriate table based on email domain
+					if (accountType === 'admin') {
+						const admin = await this.adminRepository.findByEmail(user_token_and_profile.email, true);
+						if (!admin) {
+							throw new ApiError(400, 'User not found, please register first');
+						}
+						user_data = admin;
+					} else {
+						const partner = await this.partnerRepository.findByEmail(user_token_and_profile.email, true);
+						if (!partner) {
+							throw new ApiError(400, 'User not found, please register first');
+						}
+						user_data = partner;
 					}
 
-					user_data = user;
 					break;
 				default:
 					this.logger.warn(`Invalid channel: ${channel}`);
@@ -184,8 +236,8 @@ export class AuthService {
 			}
 
 			//generate token for the user
-			const token = this.generateToken(user_data);
-			return { token };
+			const token = this.generateToken(user_data, accountType);
+			return { token, accountType };
 		} catch (error) {
 			this.logger.error(`Login failed for ${channel}: ${error}`);
 			throw new ApiError(400, 'Auth Failed', error);
@@ -196,6 +248,7 @@ export class AuthService {
 	async SocialRegister(channel: string, code: string, redirect_uri: string): Promise<any> {
 		try {
 			let user_data: any;
+			let accountType: 'admin' | 'partner' = 'partner'; // default to partner
 			switch (channel) {
 				case 'google':
 					//get the token from the code
@@ -204,24 +257,42 @@ export class AuthService {
 					if (!user_token_and_profile) {
 						throw new ApiError(400, 'Invalid Authentication Code or Error retrieving access token');
 					}
+
+					accountType = this.getAccountType(user_token_and_profile.email);
 					
-					//check if the user already exists
-					const checkExistingUser = await this.userRepository.findByEmail(user_token_and_profile.email, true);
+					//check if the user already exists in the appropriate table
+					let checkExistingUser: IAdmin | IPartner | null = null;
+					if (accountType === 'admin') {
+						checkExistingUser = await this.adminRepository.findByEmail(user_token_and_profile.email, true);
+					} else {
+						checkExistingUser = await this.partnerRepository.findByEmail(user_token_and_profile.email, true);
+					}
+
 					if (checkExistingUser) {
 						//if user exists, return the user data
 						user_data = checkExistingUser;
 					} else {
-						//user does not exist, create a new user with a new referral code
-						const referral_code = await this.generateReferralCode();
-
-						const newUser = await this.userRepository.create({
+						//user does not exist, create a new user
+						const userData = {
 							firstname: user_token_and_profile.name.split(' ')[0],
 							lastname: user_token_and_profile.name.split(' ')[1] || '',
 							email: user_token_and_profile.email,
 							password: salt, //use a random salt as password
 							is_active: true, //set the user as active
-							referral_code: referral_code
-						});
+						};
+
+						let newUser: IAdmin | IPartner;
+						if (accountType === 'admin') {
+							newUser = await this.adminRepository.create({
+								...userData,
+								account_type: 'admin' as const,
+							});
+						} else {
+							newUser = await this.partnerRepository.create({
+								...userData,
+								account_type: 'partner' as const,
+							});
+						}
 
 						if (!newUser._id) {
 							throw new Error(`Couldn't create user at this time, please try again later.`);
@@ -244,8 +315,8 @@ export class AuthService {
 			}
 
 			//create a token for the user
-			const token = this.generateToken(user_data);
-			return { token };
+			const token = this.generateToken(user_data, accountType);
+			return { token, accountType };
 		} catch (error) {
 			this.logger.error(`Error creating user: ${error}`);
 			throw new ApiError(400, 'User creation failed', error);
@@ -255,22 +326,34 @@ export class AuthService {
 	//forgot password
 	async ForgotPassword(email: string): Promise<void> {
 		try {
-			const user = await this.userRepository.findByEmail(email, true);
+			const accountType = this.getAccountType(email);
+			let user: IAdmin | IPartner | null = null;
+
+			// Check the appropriate table based on email domain
+			if (accountType === 'admin') {
+				user = await this.adminRepository.findByEmail(email, true);
+			} else {
+				user = await this.partnerRepository.findByEmail(email, true);
+			}
+
 			if (!user) {
 				throw new Error('User not found');
 			}
 
 			//send email to the user
 			const reset_token = salt;
-			// const sending_url = process.env.SENDING_URL;
-			// const reset_url = `${sending_url}/reset_password?email=${user.email}&reset_token=${reset_token}`;
 
 			//update the save record with the verification token
 			user.reset_token = reset_token;
 			if (!user._id) {
 				throw new Error('User ID is undefined');
 			}
-			await this.userRepository.updateById(user._id.toString(), { reset_token });
+
+			if (accountType === 'admin') {
+				await this.adminRepository.updateById(user._id.toString(), { reset_token });
+			} else {
+				await this.partnerRepository.updateById(user._id.toString(), { reset_token });
+			}
 
 			//send email to the user
 			await this.emailService.sendTemplateEmail(
@@ -278,6 +361,8 @@ export class AuthService {
 				user.email,
 				{ firstname: user.firstname, email: user.email, /*reset_url*/ }
 			);
+
+			console.log('Password reset email sent');
 
 			return Promise.resolve();
 		} catch (error) {
@@ -321,7 +406,16 @@ export class AuthService {
 	//reset password
 	async ResetPassword(email: string, password: string): Promise<void> {
 		try {
-			const user = await this.userRepository.findByEmail(email, true);
+			const accountType = this.getAccountType(email);
+			let user: IAdmin | IPartner | null = null;
+
+			// Check the appropriate table based on email domain
+			if (accountType === 'admin') {
+				user = await this.adminRepository.findByEmail(email, true);
+			} else {
+				user = await this.partnerRepository.findByEmail(email, true);
+			}
+
 			if (!user) {
 				throw new Error('User not found');
 			}
@@ -334,7 +428,12 @@ export class AuthService {
 				throw new Error('User ID is undefined');
 			}
 			const user_id = user._id.toString();
-			await this.userRepository.updateById(user_id, { password: user.password });
+
+			if (accountType === 'admin') {
+				await this.adminRepository.updateById(user_id, { password: user.password });
+			} else {
+				await this.partnerRepository.updateById(user_id, { password: user.password });
+			}
 
 			//send email to the user
 		} catch (error) {
@@ -344,7 +443,7 @@ export class AuthService {
 	}
 
 	//jwt token generation
-	private generateToken(user: IUser): string {
+	private generateToken(user: IUser | IAdmin | IPartner, accountType: 'admin' | 'partner'): string {
 		if (!process.env.JWT_SECRET) {
 			throw new ApiError(500, 'JWT secret not configured');
 		}
@@ -354,6 +453,7 @@ export class AuthService {
 				sub: user._id, // Add custom claims as needed
 				user_id: user._id,
 				email: user.email,
+				account_type: accountType,
 			},
 			process.env.JWT_SECRET!,
 			{
@@ -361,21 +461,5 @@ export class AuthService {
 				issuer: process.env.JWT_ISSUER || 'usepreppit'
 			}
 		);
-	}
-
-	private async generateReferralCode(): Promise<string> {
-		let code: string;
-		let exists = true;
-
-		while (exists) {
-			code = `PPT-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-			const existingUser = await this.userRepository.findSingleUserByFilter({ referral_code: code });
-			if (!existingUser) {
-				exists = false;
-				return code;
-			}
-		}
-
-		throw new Error('Failed to generate unique referral code');
 	}
 }

@@ -9,7 +9,6 @@ import profile_router from '../application/profile/profile.router';
 import dashboard_router from '../application/dashboard/dashboard.router';
 import payments_router from '../application/payments/payments.router';
 import subscriptions_router from '../application/subscriptions/subscriptions.router';
-import referals_router from '../application/referrals/referrals.router';
 import { NotFoundError } from '../helpers/error.helper';
 
 
@@ -31,7 +30,6 @@ export default() => {
     dashboard_router(app);
     payments_router(app);
     subscriptions_router(app);
-    referals_router(app);
     app.use((_, __, next) => {
         next(new NotFoundError('Route not found'));
     });

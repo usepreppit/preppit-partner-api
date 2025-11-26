@@ -10,13 +10,30 @@ export class ProfileController {
         @inject(ProfileService) private readonly profileService: ProfileService,
         @inject(Logger) private readonly logger: Logger
     ) {}
+
+    async GetProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const user_id = req.curr_user?._id?.toString() as string;
+            const account_type = req.account_type;
+            try {
+                const curr_user = await this.profileService.GetProfile(user_id, account_type);
+                ApiResponse.ok(curr_user, 'User profile retrieved successfully').send(res);
+            } catch (error) {
+                this.logger.error('Error fetching user profile', error);
+                next(error);
+            }
+        } catch (error) {
+            next(error);
+        }
+    }
  
     async ChangePassword(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const user_id = req.curr_user?._id?.toString() as string;
+            const account_type = req.account_type;
             const { old_password, new_password } = req.body;
             try {
-                const curr_user = await this.profileService.ChangePassword(user_id, old_password, new_password);
+                const curr_user = await this.profileService.ChangePassword(user_id, old_password, new_password, account_type);
 
                 ApiResponse.ok(curr_user, 'user password updated successfully').send(res);
             } catch (error) {
@@ -32,9 +49,10 @@ export class ProfileController {
     async UpdateProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const user_id = req.curr_user?._id?.toString() as string;
+            const account_type = req.account_type;
             // const { firstname, lastname, business_name, business_about, business_country } = req.body;
             try {
-                const curr_user = await this.profileService.UpdateProfile(user_id, req.body);
+                const curr_user = await this.profileService.UpdateProfile(user_id, req.body, account_type);
                 ApiResponse.ok(curr_user, 'user profile updated successfully').send(res);
             } catch (error) {
                 this.logger.error('Error updating user profile', error);
@@ -48,8 +66,9 @@ export class ProfileController {
     async UpdateProfilePicture(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const user_id = req.curr_user?._id?.toString() as string;
+            const account_type = req.account_type;
             try {
-                const curr_user = await this.profileService.UpdateProfilePicture(user_id, req);
+                const curr_user = await this.profileService.UpdateProfilePicture(user_id, req, account_type);
 
                 ApiResponse.ok(curr_user, 'user profile picture updated successfully').send(res);
             } catch (error) {
@@ -65,8 +84,9 @@ export class ProfileController {
     async RemoveProfilePicture(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const user_id = req.curr_user?._id?.toString() as string;
+            const account_type = req.account_type;
             try {
-                const curr_user = await this.profileService.RemoveProfilePicture(user_id);
+                const curr_user = await this.profileService.RemoveProfilePicture(user_id, account_type);
                 ApiResponse.ok(curr_user, 'user profile picture removed successfully').send(res);
             } catch (error) {
                 this.logger.error('Error removing user profile picture', error);

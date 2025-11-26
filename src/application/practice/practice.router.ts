@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { container } from '../../startup/di/container';
 import { PracticeController } from './practice.controller';
 import { authMiddleware } from '../../middlewares/auth.middleware';
-import { practiceAuthMiddleware } from '../../middlewares/practice_auth.middleware';
 
 const route = Router();
 // route.use(authMiddleware);
@@ -17,7 +16,7 @@ export default (app: Router) => {
     route.get('/details/:practice_id', authMiddleware, practiceController.GetPracticeDetails.bind(practiceController));
     route.get('/history/me', authMiddleware, practiceController.GetPracticeHistory.bind(practiceController)); //get practice history for a user
     route.post('/get_scenario', authMiddleware, practiceController.GetScenario.bind(practiceController));
-    route.post('/start', authMiddleware, practiceAuthMiddleware, practiceController.StartPractice.bind(practiceController));
+    route.post('/start', authMiddleware, practiceController.StartPractice.bind(practiceController));
     route.get('/analytics/me', authMiddleware, practiceController.GetPracticeUsageAnalytics.bind(practiceController));
 
     route.get('/evaluate/:practice_id', authMiddleware, practiceController.EvaluateUserPractice.bind(practiceController));
