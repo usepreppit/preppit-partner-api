@@ -22,6 +22,8 @@ export interface IUser {
     user_balance_seconds?: number;
     google_id?: string;
     linkedin_id?: string;
+    partner_id?: string | number; // For candidates linked to a partner
+    batch_id?: string | number; // For candidates in a batch
     createdAt?: Date;
     updatedAt?: Date;
     comparePassword?: (candidatePassword: string) => Promise<boolean>;

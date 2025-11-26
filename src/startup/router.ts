@@ -7,6 +7,7 @@ import utils_router from '../application/utils/utils.router';
 import practice_router from '../application/practice/practice.router';
 import profile_router from '../application/profile/profile.router';
 import dashboard_router from '../application/dashboard/dashboard.router';
+import candidates_router from '../application/candidates/candidates.router';
 import payments_router from '../application/payments/payments.router';
 import subscriptions_router from '../application/subscriptions/subscriptions.router';
 import { NotFoundError } from '../helpers/error.helper';
@@ -28,6 +29,7 @@ export default() => {
     practice_router(app);
     profile_router(app);
     dashboard_router(app);
+    candidates_router(app);
     payments_router(app);
     subscriptions_router(app);
     app.use((_, __, next) => {

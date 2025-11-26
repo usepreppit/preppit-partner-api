@@ -11,6 +11,7 @@ import { UtilsController } from '../../application/utils/utils.controller';
 import { PracticeController } from '../../application/practice/practice.controller';
 import { ProfileController } from '../../application/profile/profile.controller';
 import { DashboardController } from '../../application/dashboard/dashboard.controller';
+import { CandidatesController } from '../../application/candidates/candidates.controller';
 import { PaymentsController } from '../../application/payments/payments.controller';
 import { SubscriptionsController } from '../../application/subscriptions/subscriptions.controller';
 
@@ -22,6 +23,7 @@ import { ExamsService } from '../../application/exams/exams.service';
 import { PracticeService } from '../../application/practice/practice.service';
 import { ProfileService } from '../../application/profile/profile.service';
 import { DashboardService } from '../../application/dashboard/dashboard.service';
+import { CandidatesService } from '../../application/candidates/candidates.service';
 import { PaymentsService } from '../../application/payments/payments.service';
 import { SubscriptionService } from '../../application/subscriptions/subscriptions.service';
 
@@ -51,6 +53,7 @@ import { PaymentMethodModel } from '../../application/payments/models/payment_me
 import { PaymentPlansModel } from '../../application/payments/models/payment_plans.model';
 import { SubscriptionsModel } from '../../application/subscriptions/models/subscriptions.model';
 import { UserActivityLogModel } from '../../application/activity/models/activity_logs.model';
+import { CandidateBatchModel } from '../../databases/mongodb/schema/candidate_batch.schema';
 
 
 // Repositories
@@ -60,6 +63,7 @@ import { PartnerRepository } from '../../application/users/models/partner.reposi
 import { ExamsRepository } from '../../application/exams/models/exams.repository';
 import { PracticeRepository } from '../../application/practice/models/practice.repository';
 import { DashboardRepository } from '../../application/dashboard/models/dashboard.repository';
+import { CandidatesRepository } from '../../application/candidates/models/candidates.repository';
 import { PaymentsRepository } from '../../application/payments/models/payments.repository';
 import { SubscriptionRepository } from '../../application/subscriptions/models/subscriptions.repository';
 
@@ -79,6 +83,7 @@ container.bind<UtilsController>(UtilsController).toSelf();
 container.bind<PracticeController>(PracticeController).toSelf();
 container.bind<ProfileController>(ProfileController).toSelf();
 container.bind<DashboardController>(DashboardController).toSelf();
+container.bind<CandidatesController>(CandidatesController).toSelf();
 container.bind<PaymentsController>(PaymentsController).toSelf();
 container.bind<SubscriptionsController>(SubscriptionsController).toSelf();
 
@@ -90,6 +95,7 @@ container.bind<ExamsService>(ExamsService).toSelf();
 container.bind<PracticeService>(PracticeService).toSelf();
 container.bind<ProfileService>(ProfileService).toSelf();
 container.bind<DashboardService>(DashboardService).toSelf();
+container.bind<CandidatesService>(CandidatesService).toSelf();
 container.bind<PaymentsService>(PaymentsService).toSelf();
 container.bind<SubscriptionService>(SubscriptionService).toSelf();
 
@@ -102,6 +108,7 @@ container.bind<PartnerRepository>(PartnerRepository).toSelf();
 container.bind<ExamsRepository>(ExamsRepository).toSelf();
 container.bind<PracticeRepository>(PracticeRepository).toSelf();
 container.bind<DashboardRepository>(DashboardRepository).toSelf();
+container.bind<CandidatesRepository>(CandidatesRepository).toSelf();
 container.bind<PaymentsRepository>(PaymentsRepository).toSelf();
 container.bind<SubscriptionRepository>(SubscriptionRepository).toSelf();
 
@@ -123,6 +130,7 @@ container.bind<typeof PaymentMethodModel>('PaymentMethodModel').toConstantValue(
 container.bind<typeof PaymentPlansModel>('PaymentPlansModel').toConstantValue(PaymentPlansModel);
 container.bind<typeof SubscriptionsModel>('SubscriptionsModel').toConstantValue(SubscriptionsModel);
 container.bind<typeof UserActivityLogModel>('UserActivityLogModel').toConstantValue(UserActivityLogModel);
+container.bind<typeof CandidateBatchModel>('CandidateBatchModel').toConstantValue(CandidateBatchModel);
 
 
 // Application Services

@@ -22,6 +22,8 @@ const userSchema = new Schema<IUser>({
     user_balance_seconds: { type: Number, default: 0 },
     google_id: { type: String },
     linkedin_id: { type: String },
+    partner_id: { type: Schema.Types.ObjectId, ref: 'Partner', index: true },
+    batch_id: { type: Schema.Types.ObjectId, ref: 'CandidateBatch', index: true },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
 });
