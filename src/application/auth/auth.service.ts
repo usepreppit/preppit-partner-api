@@ -75,7 +75,7 @@ export class AuthService {
 			return { token, accountType };
 		} catch (error) {
 			this.logger.error(`Login failed for ${email}: ${error}`);
-			throw new ApiError(400, 'Auth Failed', error);
+			throw new ApiError(400, 'Invalid credentials, please check your email or password', error);
 		}
     }
 
