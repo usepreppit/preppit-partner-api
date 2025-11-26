@@ -161,12 +161,45 @@ export class CandidatesRepository {
         return candidates;
     }
 
-    async checkCandidateExists(email: string, partner_id: string): Promise<boolean> {
+    async checkCandidateExists(email: string): Promise<boolean> {
         const count = await this.userModel.countDocuments({
             email,
-            partner_id: new mongoose.Types.ObjectId(partner_id)
         });
         return count > 0;
+    }
+
+    async checkMultipleCandidatesExist(emails: string[]): Promise<Set<string>> {
+        const existingCandidates = await this.userModel.find(
+            { email: { $in: emails } },
+            { email: 1, _id: 0 }
+        ).lean();
+        
+        return new Set(existingCandidates.map(c => c.email));
+    }
+
+    async createCandidatesBulk(
+        candidatesData: Array<{
+            partner_id: string;
+            batch_id: string;
+            firstname: string;
+            lastname: string;
+            email: string;
+        }>
+    ): Promise<IUser[]> {
+        const candidates = candidatesData.map(data => ({
+            firstname: data.firstname,
+            lastname: data.lastname,
+            email: data.email,
+            partner_id: new mongoose.Types.ObjectId(data.partner_id),
+            batch_id: new mongoose.Types.ObjectId(data.batch_id),
+            is_active: true,
+            is_onboarding_completed: false,
+            is_paid_for: false,
+            invite_status: 'pending' as const,
+            invite_sent_at: new Date()
+        }));
+
+        return await this.userModel.insertMany(candidates, { ordered: false });
     }
 
     async getCandidateCountByPartnerId(partner_id: string): Promise<number> {

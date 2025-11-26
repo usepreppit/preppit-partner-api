@@ -45,7 +45,7 @@ export class CandidatesService {
             }
 
             // Check if candidate already exists
-            const exists = await this.candidatesRepository.checkCandidateExists(data.email, partner_id);
+            const exists = await this.candidatesRepository.checkCandidateExists(data.email);
             if (exists) {
                 throw new ValidationError('Candidate with this email already exists');
             }
@@ -136,47 +136,96 @@ export class CandidatesService {
 
             results.total_rows = lines.length - 1;
 
-            // Process each row (skip header)
+            // First pass: Parse and validate all rows
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            const parsedRows: Array<{
+                rowNumber: number;
+                firstname: string;
+                lastname: string;
+                email: string;
+                isValid: boolean;
+                error?: string;
+            }> = [];
+
             for (let i = 1; i < lines.length; i++) {
                 const rowNumber = i + 1;
                 const line = lines[i];
                 if (!line) continue;
 
-                try {
-                    const values = line.split(',').map((v: string) => v.trim());
-                    
-                    const firstname = values[firstnameIndex] || '';
-                    const lastname = values[lastnameIndex] || '';
-                    const email = values[emailIndex] || '';
+                const values = line.split(',').map((v: string) => v.trim());
+                const firstname = values[firstnameIndex] || '';
+                const lastname = values[lastnameIndex] || '';
+                const email = values[emailIndex] || '';
 
-                    // Validate required fields
-                    if (!firstname || !lastname || !email) {
-                        throw new Error('Missing required fields (firstname, lastname, email)');
-                    }
+                let isValid = true;
+                let error = '';
 
-                    // Basic email validation
-                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                    if (!emailRegex.test(email)) {
-                        throw new Error('Invalid email format');
-                    }
+                // Validate required fields
+                if (!firstname || !lastname || !email) {
+                    isValid = false;
+                    error = 'Missing required fields (firstname, lastname, email)';
+                } else if (!emailRegex.test(email)) {
+                    isValid = false;
+                    error = 'Invalid email format';
+                }
 
-                    // Check if candidate already exists
-                    const exists = await this.candidatesRepository.checkCandidateExists(email, partner_id);
-                    if (exists) {
-                        throw new Error('Email already exists');
-                    }
+                parsedRows.push({
+                    rowNumber,
+                    firstname,
+                    lastname,
+                    email,
+                    isValid,
+                    error
+                });
+            }
 
-                    // Create candidate
-                    const candidate = await this.candidatesRepository.createCandidate(
+            // Second pass: Check for existing emails (single DB call)
+            const validRows = parsedRows.filter(row => row.isValid);
+            const emailsToCheck = validRows.map(row => row.email);
+            const existingEmails = await this.candidatesRepository.checkMultipleCandidatesExist(emailsToCheck);
+
+            // Separate valid candidates from those with errors
+            const candidatesToCreate: Array<{
+                partner_id: string;
+                batch_id: string;
+                firstname: string;
+                lastname: string;
+                email: string;
+            }> = [];
+
+            for (const row of parsedRows) {
+                if (!row.isValid) {
+                    results.failed++;
+                    results.errors.push({
+                        row: row.rowNumber,
+                        email: row.email || 'N/A',
+                        error: row.error!
+                    });
+                } else if (existingEmails.has(row.email)) {
+                    results.failed++;
+                    results.errors.push({
+                        row: row.rowNumber,
+                        email: row.email,
+                        error: 'Email already exists'
+                    });
+                } else {
+                    candidatesToCreate.push({
                         partner_id,
                         batch_id,
-                        firstname,
-                        lastname,
-                        email
-                    );
+                        firstname: row.firstname,
+                        lastname: row.lastname,
+                        email: row.email
+                    });
+                }
+            }
 
-                    results.successful++;
-                    results.candidates.push({
+            // Third pass: Bulk create candidates (single DB call)
+            if (candidatesToCreate.length > 0) {
+                try {
+                    const createdCandidates = await this.candidatesRepository.createCandidatesBulk(candidatesToCreate);
+                    
+                    results.successful = createdCandidates.length;
+                    results.candidates = createdCandidates.map(candidate => ({
                         _id: candidate._id as string,
                         firstname: candidate.firstname,
                         lastname: candidate.lastname || '',
@@ -190,18 +239,34 @@ export class CandidatesService {
                         invite_accepted_at: candidate.invite_accepted_at,
                         createdAt: candidate.createdAt!,
                         updatedAt: candidate.updatedAt!
-                    });
-
-                } catch (error: any) {
-                    results.failed++;
-                    if (line) {
-                        const values = line.split(',').map((v: string) => v.trim());
-                        results.errors.push({
-                            row: rowNumber,
-                            email: values[emailIndex] || 'N/A',
-                            error: error.message
-                        });
+                    }));
+                } catch (bulkError: any) {
+                    // Handle any bulk insert errors
+                    this.logger.error('Bulk insert error:', bulkError);
+                    
+                    // If some documents were inserted despite errors
+                    if (bulkError.insertedDocs && bulkError.insertedDocs.length > 0) {
+                        results.successful = bulkError.insertedDocs.length;
+                        results.candidates = bulkError.insertedDocs.map((candidate: IUser) => ({
+                            _id: candidate._id as string,
+                            firstname: candidate.firstname,
+                            lastname: candidate.lastname || '',
+                            email: candidate.email,
+                            batch_id: batch_id,
+                            batch_name: batch.batch_name,
+                            is_active: candidate.is_active,
+                            is_paid_for: candidate.is_paid_for || false,
+                            invite_status: candidate.invite_status || 'pending',
+                            invite_sent_at: candidate.invite_sent_at,
+                            invite_accepted_at: candidate.invite_accepted_at,
+                            createdAt: candidate.createdAt!,
+                            updatedAt: candidate.updatedAt!
+                        }));
                     }
+                    
+                    // Mark remaining as failed
+                    const failedCount = candidatesToCreate.length - (bulkError.insertedDocs?.length || 0);
+                    results.failed += failedCount;
                 }
             }
 
