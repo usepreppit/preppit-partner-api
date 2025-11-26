@@ -79,9 +79,8 @@ export class AuthService {
 		}
     }
 
-	async CreateUser(user: IUser | IAdmin | IPartner, referrer_code: string | undefined): Promise<Omit<IUser | IAdmin | IPartner, 'password'>> {
+	async CreateUser(user: IUser | IAdmin | IPartner): Promise<Omit<IUser | IAdmin | IPartner, 'password'>> {
 		try {
-			console.log(referrer_code);
 			// hash the password first
 			const hashedPassword = await hashPassword(user.password); //hash the password from the password helper
 			user.password = hashedPassword; //update the user password with the hashed password
@@ -337,7 +336,7 @@ export class AuthService {
 			}
 
 			if (!user) {
-				throw new Error('User not found');
+				return Promise.resolve(); //to prevent email enumeration
 			}
 
 			//send email to the user
@@ -346,7 +345,7 @@ export class AuthService {
 			//update the save record with the verification token
 			user.reset_token = reset_token;
 			if (!user._id) {
-				throw new Error('User ID is undefined');
+				throw new ApiError(400, 'User ID is undefined');
 			}
 
 			if (accountType === 'admin') {
@@ -361,8 +360,6 @@ export class AuthService {
 				user.email,
 				{ firstname: user.firstname, email: user.email, /*reset_url*/ }
 			);
-
-			console.log('Password reset email sent');
 
 			return Promise.resolve();
 		} catch (error) {

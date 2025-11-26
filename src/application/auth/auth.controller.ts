@@ -30,9 +30,8 @@ export class AuthController {
 
     async Register(req: Request, res: Response, next: NextFunction): Promise<void> {
         const user_details = req.body;
-        const referrer_code = req.body.referrer_code as string | undefined;
         try {
-            const newUser = await this.authService.CreateUser(user_details, referrer_code);
+            const newUser = await this.authService.CreateUser(user_details);
             ApiResponse.ok(newUser, 'user registration successful').send(res);
         } catch (error) {
             this.logger.error('Error Creating new user', error);
