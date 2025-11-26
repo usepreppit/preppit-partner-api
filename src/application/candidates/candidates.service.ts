@@ -184,6 +184,10 @@ export class CandidatesService {
                         batch_id: batch_id,
                         batch_name: batch.batch_name,
                         is_active: candidate.is_active,
+                        is_paid_for: candidate.is_paid_for || false,
+                        invite_status: candidate.invite_status || 'pending',
+                        invite_sent_at: candidate.invite_sent_at,
+                        invite_accepted_at: candidate.invite_accepted_at,
                         createdAt: candidate.createdAt!,
                         updatedAt: candidate.updatedAt!
                     });
@@ -286,6 +290,64 @@ export class CandidatesService {
         } catch (error: any) {
             this.logger.error('Error fetching batches:', error);
             throw new ApiError(500, 'Failed to fetch batches');
+        }
+    }
+
+    async markCandidateAsPaid(partner_id: string, candidate_id: string): Promise<IUser> {
+        try {
+            // Verify candidate belongs to partner
+            const candidate = await this.candidatesRepository.getCandidateById(candidate_id);
+            if (!candidate) {
+                throw new ValidationError('Candidate not found');
+            }
+            if (candidate.partner_id?.toString() !== partner_id) {
+                throw new ValidationError('Candidate does not belong to this partner');
+            }
+
+            const updated = await this.candidatesRepository.updateCandidatePaymentStatus(candidate_id, true);
+            if (!updated) {
+                throw new ApiError(500, 'Failed to update payment status');
+            }
+
+            this.logger.info(`Candidate ${candidate_id} marked as paid by partner ${partner_id}`);
+            return updated;
+        } catch (error: any) {
+            if (error instanceof ValidationError || error instanceof ApiError) {
+                throw error;
+            }
+            this.logger.error('Error marking candidate as paid:', error);
+            throw new ApiError(500, 'Failed to update payment status');
+        }
+    }
+
+    async acceptCandidateInvite(candidate_id: string): Promise<IUser> {
+        try {
+            const candidate = await this.candidatesRepository.getCandidateById(candidate_id);
+            if (!candidate) {
+                throw new ValidationError('Candidate not found');
+            }
+
+            if (candidate.invite_status === 'accepted') {
+                throw new ValidationError('Invite already accepted');
+            }
+
+            if (candidate.invite_status === 'expired') {
+                throw new ValidationError('Invite has expired');
+            }
+
+            const updated = await this.candidatesRepository.updateCandidateInviteStatus(candidate_id, 'accepted');
+            if (!updated) {
+                throw new ApiError(500, 'Failed to accept invite');
+            }
+
+            this.logger.info(`Candidate ${candidate_id} accepted invite`);
+            return updated;
+        } catch (error: any) {
+            if (error instanceof ValidationError || error instanceof ApiError) {
+                throw error;
+            }
+            this.logger.error('Error accepting invite:', error);
+            throw new ApiError(500, 'Failed to accept invite');
         }
     }
 }

@@ -15,6 +15,10 @@ Complete candidate management system for partners to organize candidates into ba
 Added fields:
 - `partner_id`: ObjectId (links candidate to partner)
 - `batch_id`: ObjectId (links candidate to batch)
+- `is_paid_for`: Boolean (indicates if partner has paid for this candidate's subscription)
+- `invite_status`: Enum ['pending', 'accepted', 'expired'] (candidate invite acceptance status)
+- `invite_sent_at`: Date (when invite was sent to candidate)
+- `invite_accepted_at`: Date (when candidate accepted the invite)
 
 ## API Endpoints
 

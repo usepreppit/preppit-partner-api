@@ -24,6 +24,10 @@ export interface IUser {
     linkedin_id?: string;
     partner_id?: string | number; // For candidates linked to a partner
     batch_id?: string | number; // For candidates in a batch
+    is_paid_for?: boolean; // Partner subscription status for this candidate
+    invite_status?: 'pending' | 'accepted' | 'expired'; // Invite acceptance status
+    invite_sent_at?: Date; // When invite was sent
+    invite_accepted_at?: Date; // When invite was accepted
     createdAt?: Date;
     updatedAt?: Date;
     comparePassword?: (candidatePassword: string) => Promise<boolean>;

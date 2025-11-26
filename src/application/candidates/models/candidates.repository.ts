@@ -65,7 +65,10 @@ export class CandidatesRepository {
             partner_id: new mongoose.Types.ObjectId(partner_id),
             batch_id: new mongoose.Types.ObjectId(batch_id),
             is_active: true,
-            is_onboarding_completed: false
+            is_onboarding_completed: false,
+            is_paid_for: false,
+            invite_status: 'pending',
+            invite_sent_at: new Date()
         });
         return candidate;
     }
@@ -96,6 +99,10 @@ export class CandidatesRepository {
                     batch_id: 1,
                     batch_name: '$batch.batch_name',
                     is_active: 1,
+                    is_paid_for: 1,
+                    invite_status: 1,
+                    invite_sent_at: 1,
+                    invite_accepted_at: 1,
                     createdAt: 1,
                     updatedAt: 1
                 }
@@ -138,6 +145,10 @@ export class CandidatesRepository {
                     batch_id: 1,
                     batch_name: '$batch.batch_name',
                     is_active: 1,
+                    is_paid_for: 1,
+                    invite_status: 1,
+                    invite_sent_at: 1,
+                    invite_accepted_at: 1,
                     createdAt: 1,
                     updatedAt: 1
                 }
@@ -176,5 +187,34 @@ export class CandidatesRepository {
         })
         .sort({ created_at: -1 })
         .lean();
+    }
+
+    async updateCandidatePaymentStatus(candidate_id: string, is_paid_for: boolean): Promise<IUser | null> {
+        return await this.userModel.findByIdAndUpdate(
+            candidate_id,
+            { is_paid_for },
+            { new: true }
+        ).lean();
+    }
+
+    async updateCandidateInviteStatus(
+        candidate_id: string,
+        invite_status: 'pending' | 'accepted' | 'expired'
+    ): Promise<IUser | null> {
+        const updateData: any = { invite_status };
+        
+        if (invite_status === 'accepted') {
+            updateData.invite_accepted_at = new Date();
+        }
+
+        return await this.userModel.findByIdAndUpdate(
+            candidate_id,
+            updateData,
+            { new: true }
+        ).lean();
+    }
+
+    async getCandidateById(candidate_id: string): Promise<IUser | null> {
+        return await this.userModel.findById(candidate_id).lean();
     }
 }

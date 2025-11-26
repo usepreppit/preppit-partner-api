@@ -126,4 +126,49 @@ export class CandidatesController {
             next(error);
         }
     }
+
+    async MarkCandidateAsPaid(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const partner_id = req.curr_user?._id?.toString() as string;
+            const { candidate_id } = req.params;
+
+            if (!candidate_id) {
+                ApiResponse.badRequest('candidate_id is required').send(res);
+                return;
+            }
+
+            try {
+                const candidate = await this.candidatesService.markCandidateAsPaid(partner_id, candidate_id);
+
+                ApiResponse.ok(candidate, 'Candidate marked as paid').send(res);
+            } catch (error) {
+                next(error);
+            }
+        } catch (error) {
+            this.logger.error('Error in MarkCandidateAsPaid:', error);
+            next(error);
+        }
+    }
+
+    async AcceptCandidateInvite(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { candidate_id } = req.params;
+
+            if (!candidate_id) {
+                ApiResponse.badRequest('candidate_id is required').send(res);
+                return;
+            }
+
+            try {
+                const candidate = await this.candidatesService.acceptCandidateInvite(candidate_id);
+
+                ApiResponse.ok(candidate, 'Invite accepted successfully').send(res);
+            } catch (error) {
+                next(error);
+            }
+        } catch (error) {
+            this.logger.error('Error in AcceptCandidateInvite:', error);
+            next(error);
+        }
+    }
 }

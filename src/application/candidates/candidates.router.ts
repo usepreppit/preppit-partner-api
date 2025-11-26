@@ -60,4 +60,17 @@ export default (app: Router) => {
         '/upload-csv',
         candidatesController.UploadCandidatesCSV.bind(candidatesController)
     );
+
+    // Mark candidate as paid (partner only)
+    route.patch(
+        '/:candidate_id/mark-paid',
+        candidatesController.MarkCandidateAsPaid.bind(candidatesController)
+    );
+
+    // Accept candidate invite (public - no auth required for this endpoint)
+    // Note: This route should be registered without authMiddleware if used publicly
+    route.post(
+        '/:candidate_id/accept-invite',
+        candidatesController.AcceptCandidateInvite.bind(candidatesController)
+    );
 };

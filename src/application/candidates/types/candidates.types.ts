@@ -22,6 +22,10 @@ export interface CandidateWithBatch {
     batch_id?: string;
     batch_name?: string;
     is_active: boolean;
+    is_paid_for: boolean;
+    invite_status: 'pending' | 'accepted' | 'expired';
+    invite_sent_at?: Date;
+    invite_accepted_at?: Date;
     createdAt: Date;
     updatedAt: Date;
 }

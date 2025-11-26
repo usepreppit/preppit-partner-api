@@ -24,6 +24,14 @@ const userSchema = new Schema<IUser>({
     linkedin_id: { type: String },
     partner_id: { type: Schema.Types.ObjectId, ref: 'Partner', index: true },
     batch_id: { type: Schema.Types.ObjectId, ref: 'CandidateBatch', index: true },
+    is_paid_for: { type: Boolean, default: false },
+    invite_status: { 
+        type: String, 
+        enum: ['pending', 'accepted', 'expired'], 
+        default: 'pending' 
+    },
+    invite_sent_at: { type: Date },
+    invite_accepted_at: { type: Date },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
 });
