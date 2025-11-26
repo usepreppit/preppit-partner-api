@@ -1,10 +1,8 @@
 // src/core/middleware/auth.middleware.ts
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { IUser } from './../application/users/types/user.types';
 import { IAdmin } from './../application/users/types/admin.types';
 import { IPartner } from './../application/users/types/partner.types';
-import { UserModel } from './../application/users/models/user.model';
 import AdminModel from './../databases/mongodb/schema/admin.schema';
 import PartnerModel from './../databases/mongodb/schema/partner.schema';
 import { ApiError } from '../helpers/error.helper';
@@ -13,8 +11,8 @@ import { ApiError } from '../helpers/error.helper';
 declare global {
     namespace Express {
         interface Request {
-            curr_user?: IUser | IAdmin | IPartner;
-            account_type?: 'user' | 'admin' | 'partner';
+            curr_user?: IAdmin | IPartner;
+            account_type?: 'admin' | 'partner';
         }
     }
 }
@@ -40,7 +38,7 @@ export const authMiddleware = async (req: Request, _: Response, next: NextFuncti
 
         // 3. Get user from the appropriate database based on account_type
         let user: any = null;
-        let accountType: 'user' | 'admin' | 'partner' = 'user';
+        let accountType: 'admin' | 'partner';
 
         if (decoded.account_type === 'admin') {
             user = await AdminModel.findById(decoded.user_id)
@@ -53,12 +51,8 @@ export const authMiddleware = async (req: Request, _: Response, next: NextFuncti
                 .lean();
             accountType = 'partner';
         } else {
-            // Fallback to user table if no account_type specified (for backwards compatibility)
-            user = await UserModel.findById(decoded.user_id)
-                .select('-password')
-                .populate('subscriptions')
-                .lean();
-            accountType = 'user';
+            // No account_type in token - invalid token format
+            throw new ApiError(401, 'Invalid token format');
         }
 
         if (!user) {

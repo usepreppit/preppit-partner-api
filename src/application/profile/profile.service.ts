@@ -2,7 +2,6 @@ import { inject, injectable } from 'inversify';
 import { Logger } from './../../startup/logger';
 import { ApiError, ValidationError } from '../../helpers/error.helper';
 import { Request } from 'express';
-import { UserRepository } from './../users/models/user.repository';
 import { AdminRepository } from './../users/models/admin.repository';
 import { PartnerRepository } from './../users/models/partner.repository';
 import { comparePasswords, hashPassword } from '../../helpers/password.helper';
@@ -13,15 +12,14 @@ import { uploadToCFBucket } from '../../helpers/upload_to_s3.helper';
 export class ProfileService {
     constructor(
 		@inject(Logger) private readonly logger: Logger,
-        @inject(UserRepository) private readonly userRepository: UserRepository,
         @inject(AdminRepository) private readonly adminRepository: AdminRepository,
         @inject(PartnerRepository) private readonly partnerRepository: PartnerRepository,
     ) {}
 
 	// Helper method to get user and account type
-	private async getUserWithAccountType(user_id: string, account_type?: 'user' | 'admin' | 'partner') {
+	private async getUserWithAccountType(user_id: string, account_type?: 'admin' | 'partner') {
 		let curr_user: any = null;
-		let userAccountType: 'user' | 'admin' | 'partner' = 'user';
+		let userAccountType: 'admin' | 'partner';
 
 		if (account_type === 'admin') {
 			curr_user = await this.adminRepository.findById(user_id);
@@ -30,14 +28,13 @@ export class ProfileService {
 			curr_user = await this.partnerRepository.findById(user_id);
 			userAccountType = 'partner';
 		} else {
-			curr_user = await this.userRepository.findById(user_id);
-			userAccountType = 'user';
+			throw new ValidationError("Invalid account type. Must be 'admin' or 'partner'");
 		}
 
 		return { user: curr_user, accountType: userAccountType };
 	}
 
-	async GetProfile(user_id: string, account_type?: 'user' | 'admin' | 'partner') {
+	async GetProfile(user_id: string, account_type?: 'admin' | 'partner') {
 		try {
 			const { user, accountType } = await this.getUserWithAccountType(user_id, account_type);
 			
@@ -55,7 +52,7 @@ export class ProfileService {
 		}
 	}
 
-	async ChangePassword(user_id: string, old_password: string, new_password: string, account_type?: 'user' | 'admin' | 'partner') {
+	async ChangePassword(user_id: string, old_password: string, new_password: string, account_type?: 'admin' | 'partner') {
 		try {
 			let curr_user: any = null;
 			
@@ -65,8 +62,9 @@ export class ProfileService {
 			} else if (account_type === 'partner') {
 				curr_user = await this.partnerRepository.findById(user_id, '+password');
 			} else {
-				curr_user = await this.userRepository.findById(user_id, '+password');
+				throw new ValidationError("Invalid account type. Must be 'admin' or 'partner'");
 			}
+			
 			if(!curr_user) {
 				throw new ValidationError("Invalid user");
 			}
@@ -84,10 +82,8 @@ export class ProfileService {
 			// Update password in appropriate table
 			if (account_type === 'admin') {
 				await this.adminRepository.updateById(user_id, { password: hash_new_pass });
-			} else if (account_type === 'partner') {
-				await this.partnerRepository.updateById(user_id, { password: hash_new_pass });
 			} else {
-				await this.userRepository.updateById(user_id, { password: hash_new_pass });
+				await this.partnerRepository.updateById(user_id, { password: hash_new_pass });
 			}
 
 			return { message: 'Password updated successfully' };
@@ -97,7 +93,7 @@ export class ProfileService {
 		}
 	}
 
-	async UpdateProfile(user_id: string, user_details: object, account_type?: 'user' | 'admin' | 'partner') {
+	async UpdateProfile(user_id: string, user_details: object, account_type?: 'admin' | 'partner') {
 		try {
 			let curr_user: any = null;
 			
@@ -107,7 +103,7 @@ export class ProfileService {
 			} else if (account_type === 'partner') {
 				curr_user = await this.partnerRepository.findById(user_id);
 			} else {
-				curr_user = await this.userRepository.findById(user_id);
+				throw new ValidationError("Invalid account type. Must be 'admin' or 'partner'");
 			}
 
 			if(!curr_user) {
@@ -118,10 +114,8 @@ export class ProfileService {
 			// Update profile in appropriate table
 			if (account_type === 'admin') {
 				await this.adminRepository.updateById(user_id, user_details);
-			} else if (account_type === 'partner') {
-				await this.partnerRepository.updateById(user_id, user_details);
 			} else {
-				await this.userRepository.updateById(user_id, user_details);
+				await this.partnerRepository.updateById(user_id, user_details);
 			}
 
 			return { message: 'Profile updated successfully' };
@@ -131,7 +125,7 @@ export class ProfileService {
 		}
 	}
 
-	async UpdateProfilePicture(user_id: string, req: Request, account_type?: 'user' | 'admin' | 'partner') {
+	async UpdateProfilePicture(user_id: string, req: Request, account_type?: 'admin' | 'partner') {
 		try {
 			let curr_user: any = null;
 			
@@ -141,7 +135,7 @@ export class ProfileService {
 			} else if (account_type === 'partner') {
 				curr_user = await this.partnerRepository.findById(user_id);
 			} else {
-				curr_user = await this.userRepository.findById(user_id);
+				throw new ValidationError("Invalid account type. Must be 'admin' or 'partner'");
 			}
 			if(!curr_user) {
 				throw new ValidationError("Invalid user");
@@ -162,7 +156,7 @@ export class ProfileService {
 			} else if (account_type === 'partner') {
 				await this.partnerRepository.updateById(user_id, { profile_picture });
 			} else {
-				await this.userRepository.updateById(user_id, { profile_picture });
+				throw new ValidationError("Invalid account type. Must be 'admin' or 'partner'");
 			}
 
 			return { message: 'Profile picture updated successfully', profile_picture };
@@ -172,7 +166,7 @@ export class ProfileService {
 		}
 	}
 
-	async RemoveProfilePicture(user_id: string, account_type?: 'user' | 'admin' | 'partner') {
+	async RemoveProfilePicture(user_id: string, account_type?: 'admin' | 'partner') {
 		try {
 			let curr_user: any = null;
 			
@@ -182,7 +176,7 @@ export class ProfileService {
 			} else if (account_type === 'partner') {
 				curr_user = await this.partnerRepository.findById(user_id);
 			} else {
-				curr_user = await this.userRepository.findById(user_id);
+				throw new ValidationError("Invalid account type. Must be 'admin' or 'partner'");
 			}
 
 			if(!curr_user) {
@@ -196,7 +190,7 @@ export class ProfileService {
 			} else if (account_type === 'partner') {
 				await this.partnerRepository.updateById(user_id, { profile_picture_url: '' });
 			} else {
-				await this.userRepository.updateById(user_id, { profile_picture_url: '' });
+				throw new ValidationError("Invalid account type. Must be 'admin' or 'partner'");
 			}
 
 		return { message: 'Profile picture removed successfully' };
@@ -206,7 +200,7 @@ export class ProfileService {
 	}
 }
 
-async CompleteOnboarding(user_id: string, account_type?: 'user' | 'admin' | 'partner') {
+async CompleteOnboarding(user_id: string, account_type?: 'admin' | 'partner') {
 	try {
 		// Only partners can complete onboarding
 		if (account_type !== 'partner') {

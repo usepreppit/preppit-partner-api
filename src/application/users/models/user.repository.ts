@@ -22,7 +22,30 @@ export class UserRepository {
     async findById(id: string, select_options: string = ""): Promise<IUser | null | any > {
         // return only the items that are in the filter
         select_options = select_options ? select_options : "-password"; 
-        return await this.userModel.findById(id).select(select_options).populate('exam_enrollments').populate({ 'path': 'subscriptions', populate: { path: "subscription_plan_id" }}).lean();
+        const user = await this.userModel.findById(id).select(select_options).lean();
+        
+        // Try to populate relationships if they exist, but don't fail if they don't
+        if (user) {
+            try {
+                const populatedUser = await this.userModel
+                    .findById(id)
+                    .select(select_options)
+                    .populate({ path: 'exam_enrollments', options: { strictPopulate: false } })
+                    .populate({ 
+                        path: 'subscriptions', 
+                        populate: { path: "subscription_plan_id" },
+                        options: { strictPopulate: false }
+                    })
+                    .lean();
+                return populatedUser || user;
+            } catch (error) {
+                // If populate fails, return user without populated fields
+                console.log('Warning: Could not populate user relationships:', error);
+                return user;
+            }
+        }
+        
+        return user;
     }
 
     async updateById(id: string, updateData: Partial<IUser>): Promise<IUser | null> {
@@ -45,7 +68,24 @@ export class UserRepository {
     }
 
     async getFullUserDetails(id: string): Promise<IUser | null | any> {
-        return await this.userModel.findById(id).populate('payments').populate('exam_enrollments').lean();
+        const user = await this.userModel.findById(id).lean();
+        
+        if (user) {
+            try {
+                const populatedUser = await this.userModel
+                    .findById(id)
+                    .populate({ path: 'payments', options: { strictPopulate: false } })
+                    .populate({ path: 'exam_enrollments', options: { strictPopulate: false } })
+                    .lean();
+                return populatedUser || user;
+            } catch (error) {
+                // If populate fails, return user without populated fields
+                console.log('Warning: Could not populate full user details:', error);
+                return user;
+            }
+        }
+        
+        return user;
     }
     
 }
