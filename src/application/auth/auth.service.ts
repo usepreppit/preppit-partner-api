@@ -181,7 +181,7 @@ export class AuthService {
 				if (accountType === 'admin') {
 					await this.adminRepository.updateById(user._id.toString(), { is_active: true });
 				} else {
-					await this.partnerRepository.updateById(user._id.toString(), { is_active: true });
+					await this.partnerRepository.updateById(user._id.toString(), { is_active: true, partner_status: 'active' });
 				}
 			}
 

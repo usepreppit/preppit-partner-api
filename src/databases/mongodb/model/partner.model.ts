@@ -16,6 +16,8 @@ export interface IPartner extends Document {
   profile_picture_url?: string;
   account_type: 'partner';
   partner_status?: string; // active, pending, suspended
+  is_onboarding_completed?: boolean;
+  onboarding_completed_at?: Date;
   createdAt?: Date;
   updatedAt?: Date;
 }

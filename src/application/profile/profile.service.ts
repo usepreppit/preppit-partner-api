@@ -199,10 +199,46 @@ export class ProfileService {
 				await this.userRepository.updateById(user_id, { profile_picture_url: '' });
 			}
 
-			return { message: 'Profile picture removed successfully' };
-		} catch (error) {
-			this.logger.error(`Error Removing user profile picture: ${error}`);
-			throw new ApiError(400, 'Error Removing user profile picture', error);
-		}
+		return { message: 'Profile picture removed successfully' };
+	} catch (error) {
+		this.logger.error(`Error Removing user profile picture: ${error}`);
+		throw new ApiError(400, 'Error Removing user profile picture', error);
 	}
 }
+
+async CompleteOnboarding(user_id: string, account_type?: 'user' | 'admin' | 'partner') {
+	try {
+		// Only partners can complete onboarding
+		if (account_type !== 'partner') {
+			throw new ValidationError("Onboarding is only available for partner accounts");
+		}
+
+		const curr_partner = await this.partnerRepository.findById(user_id);
+
+		if (!curr_partner) {
+			throw new ValidationError("Invalid partner");
+		}
+
+		// Check if already completed
+		if (curr_partner.is_onboarding_completed) {
+			throw new ValidationError("Onboarding has already been completed");
+		}
+
+		// Mark onboarding as complete
+		await this.partnerRepository.updateById(user_id, { 
+			is_onboarding_completed: true,
+			onboarding_completed_at: new Date()
+		});
+
+		return { 
+			message: 'Onboarding completed successfully',
+			is_onboarding_completed: true,
+			onboarding_completed_at: new Date()
+		};
+	} catch (error) {
+		this.logger.error(`Error completing onboarding: ${error}`);
+		throw new ApiError(400, 'Error completing onboarding', error);
+	}
+}
+}
+

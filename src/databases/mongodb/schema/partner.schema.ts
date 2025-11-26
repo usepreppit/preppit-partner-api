@@ -65,6 +65,13 @@ const schema = new Schema<IPartner>(
       enum: ['active', 'pending', 'suspended'],
       default: 'pending',
     },
+    is_onboarding_completed: {
+      type: Boolean,
+      default: false,
+    },
+    onboarding_completed_at: {
+      type: Date,
+    },
   },
   {
     timestamps: true,
