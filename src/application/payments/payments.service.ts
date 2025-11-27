@@ -19,44 +19,48 @@ export class PaymentsService {
 
     ) {}
 
-	async GetClientSecret(user_id: string): Promise<any> {
+	async GetClientSecret(partner_id: string): Promise<any> {
 		try {
 			//get Client Secret
-            const user_payment_profile = await this.userRepository.getFullUserDetails(user_id);
+            const partner_payment_profile = await this.partnerRepository.getFullPartnerDetails(partner_id);
 
-			if(!user_payment_profile.payments.length) {
-				//No stripe user exists create a new user, create a new customer
-				const create_stripe_customer = await createStripeCustomer(user_payment_profile.email, user_id, `${user_payment_profile.firstname} ${user_payment_profile.lastname}`);
+			if(!partner_payment_profile.payments || !partner_payment_profile.payments.length) {
+				//No stripe customer exists, create a new customer
+				const create_stripe_customer = await createStripeCustomer(
+					partner_payment_profile.email, 
+					partner_id, 
+					`${partner_payment_profile.firstname} ${partner_payment_profile.lastname || ''}`
+				);
 				console.log(create_stripe_customer);
-				await this.paymentsRepository.CreatePaymentProfile(user_id, create_stripe_customer.id, create_stripe_customer);
+				await this.paymentsRepository.CreatePaymentProfile(partner_id, create_stripe_customer.id, create_stripe_customer);
 			}
 
             const stripe_intent = await SetupStripeIntent();
             return { client_secret: stripe_intent.client_secret };
 		} catch (error) {
-			this.logger.error(`Error Getting Leads: ${error}`);
+			this.logger.error(`Error Getting Client Secret: ${error}`);
 			throw new ApiError(400, 'Error Getting Client Secret', error);
 		}
 	}
 
-	async GetUserCards(user_id: string): Promise<any> {
+	async GetUserCards(partner_id: string): Promise<any> {
 		try {
-			//get user payment profile
-			const user_profile = await this.userRepository.getFullUserDetails(user_id);
+			//get partner payment profile
+			const partner_profile = await this.partnerRepository.getFullPartnerDetails(partner_id);
 
-			console.log(user_profile);
-			if(!user_profile.payments.length) {
-				throw new ApiError(400, 'Error Getting user Payment Details, User has no payment cards')
+			console.log(partner_profile);
+			if(!partner_profile.payments || !partner_profile.payments.length) {
+				throw new ApiError(400, 'Error Getting payment details, Partner has no payment cards')
 			}
-			const stripe_customer_id = user_profile.payments[user_profile.payments.length - 1].payment_customer_id;
+			const stripe_customer_id = partner_profile.payments[partner_profile.payments.length - 1].payment_customer_id;
 			const default_card = await getDefaultCard(stripe_customer_id);
 			const get_customer_cards = await getCustomerCards(stripe_customer_id);
 
 			console.log("default_card", default_card);
 			return get_customer_cards;
 		} catch (error) {
-			this.logger.error(`Error Getting User Cards: ${error}`);
-			throw new ApiError(400, 'Error Getting User Cards', error);
+			this.logger.error(`Error Getting Cards: ${error}`);
+			throw new ApiError(400, 'Error Getting Cards', error);
 		}
 	}
 
@@ -93,27 +97,27 @@ export class PaymentsService {
 		}
 	}
 
-	async SaveCard(user_id: string, req: any, is_default: string = "true", account_type?: 'admin' | 'partner'): Promise<any> {
+	async SaveCard(partner_id: string, req: any, is_default: string = "true", account_type?: 'admin' | 'partner'): Promise<any> {
 		try {
-			//check user payment profile 
-			const user_full_profile = await this.userRepository.getFullUserDetails(user_id);
+			//check partner payment profile 
+			const partner_full_profile = await this.partnerRepository.getFullPartnerDetails(partner_id);
 
-			if(!user_full_profile.payments.length) {
-				throw new ApiError(400, 'Error Getting user Payment Details')
+			if(!partner_full_profile.payments || !partner_full_profile.payments.length) {
+				throw new ApiError(400, 'Error Getting payment details')
 			}
 
-			const stripe_customer_id = user_full_profile.payments[user_full_profile.payments.length - 1].payment_customer_id;
+			const stripe_customer_id = partner_full_profile.payments[partner_full_profile.payments.length - 1].payment_customer_id;
 
 			//get the customer payment method
-			// const customer_payment_method = user_full_profile.payments[user_full_profile.payments.length - 1].payment_customer_details.payment_method;
+			// const customer_payment_method = partner_full_profile.payments[partner_full_profile.payments.length - 1].payment_customer_details.payment_method;
 			const attach_card = await addCardToCustomer(stripe_customer_id, req.payment_method, is_default == "true" );
 
 			// Mark "payment method setup" step as complete on dashboard for partners
 			if (account_type === 'partner') {
-				const partner = await this.partnerRepository.findById(user_id);
+				const partner = await this.partnerRepository.findById(partner_id);
 				if (partner && !partner.payment_method_setup) {
-					await this.partnerRepository.markPaymentMethodSetup(user_id);
-					this.logger.info(`Marked payment method setup for partner: ${user_id}`);
+					await this.partnerRepository.markPaymentMethodSetup(partner_id);
+					this.logger.info(`Marked payment method setup for partner: ${partner_id}`);
 				}
 			}
 
@@ -123,7 +127,7 @@ export class PaymentsService {
 		}
 	}
 
-	async PurchasePlan(user_id: string, customer_payment_method: string | null, plan_id: string, payment_type: null | string): Promise<any> {
+	async PurchasePlan(partner_id: string, customer_payment_method: string | null, plan_id: string, payment_type: null | string): Promise<any> {
 		try {
 			//Confirm that the payment plan is valid
 			const payment_plan = await this.paymentsRepository.GetSingleSubscriptionPlan(plan_id);
@@ -134,18 +138,16 @@ export class PaymentsService {
 			
 
 			const amount = payment_type == "topup" ? 36 : payment_plan.amount_usd; //in usd not cents
-			const user_full_profile = await this.userRepository.getFullUserDetails(user_id);
+			const partner_full_profile = await this.partnerRepository.getFullPartnerDetails(partner_id);
 
-			if (payment_type == "topup" && user_full_profile.parsedSubscriptions.active != true) {
-				//user is trying to topup without an active subscription
-				throw new ApiError(400, 'Cannot Topup without an active subscription, Please subscribe to a plan first')
-			}
+			// Note: Partners don't have subscription model like users
+			// This endpoint may need to be redesigned for partner use case
+			
+			//for the partner profile, check if a stripe customer exists
+			const partner_payment_profile = partner_full_profile.payments?.[partner_full_profile.payments.length - 1];
 
-			//for the user profile, check if a stripe customer exists
-			const user_payment_profile = user_full_profile.payments[user_full_profile.payments.length - 1];
-
-			const stripe_customer_id = user_payment_profile?.payment_customer_id as string;
-			const stripe_payment_method = user_payment_profile?.payment_customer_details?.invoice_settings?.default_payment_method as string;
+			const stripe_customer_id = partner_payment_profile?.payment_customer_id as string;
+			const stripe_payment_method = partner_payment_profile?.payment_customer_details?.invoice_settings?.default_payment_method as string;
 
 			//declare the global variables
 			let customer_id_to_debit = stripe_customer_id;
@@ -153,28 +155,38 @@ export class PaymentsService {
 
 			if(!stripe_customer_id) {
 				//create a new customer
-				const new_stripe_customer = await createStripeCustomer(user_full_profile.email, user_id, `${user_full_profile.firstname} ${user_full_profile.lastname}`, customer_payment_method as string);
+				const new_stripe_customer = await createStripeCustomer(
+					partner_full_profile.email, 
+					partner_id, 
+					`${partner_full_profile.firstname} ${partner_full_profile.lastname || ''}`, 
+					customer_payment_method as string
+				);
 				customer_id_to_debit = new_stripe_customer.id;
 				customer_payment_method_to_use = new_stripe_customer.invoice_settings.default_payment_method as string;
-				await this.paymentsRepository.CreatePaymentProfile(user_id, new_stripe_customer.id, new_stripe_customer);
+				await this.paymentsRepository.CreatePaymentProfile(partner_id, new_stripe_customer.id, new_stripe_customer);
 			} else {
 				//check for the payment method attached to the customer
-				const saved_payment_method = user_payment_profile?.payment_customer_details?.invoice_settings?.default_payment_method;
+				const saved_payment_method = partner_payment_profile?.payment_customer_details?.invoice_settings?.default_payment_method;
 				const get_stripe_customer = await GetStripeCustomer(stripe_customer_id);
 
 				if(!get_stripe_customer) { //No stripe customer found create new customer and update the records of the old customer
 					//create a new customer
-					const new_stripe_customer = await createStripeCustomer(user_full_profile.email, user_id, `${user_full_profile.firstname} ${user_full_profile.lastname}`, customer_payment_method as string);
+					const new_stripe_customer = await createStripeCustomer(
+						partner_full_profile.email, 
+						partner_id, 
+						`${partner_full_profile.firstname} ${partner_full_profile.lastname || ''}`, 
+						customer_payment_method as string
+					);
 
 					customer_id_to_debit = new_stripe_customer.id;
 					customer_payment_method_to_use = customer_payment_method as string;
-					await this.paymentsRepository.UpdatePaymentProfile({ _id: user_full_profile._id  }, new_stripe_customer);
+					await this.paymentsRepository.UpdatePaymentProfile({ _id: partner_full_profile._id  }, new_stripe_customer);
 				} else {
 					//stripe customer exists check if the payment method matches the one on record
 					if(!saved_payment_method || (saved_payment_method != customer_payment_method)) {
 						//Add the payment method to the customer and make it the default card then update the payment record
 						await addCardToCustomer(stripe_customer_id as string, customer_payment_method as string, true);
-						await this.paymentsRepository.UpdatePaymentProfileByPaymentMethod(user_id, customer_payment_method as string);
+						await this.paymentsRepository.UpdatePaymentProfileByPaymentMethod(partner_id, customer_payment_method as string);
 					} 
 				}
 			}
@@ -188,7 +200,7 @@ export class PaymentsService {
 			} else {
 				//save payment details
 				const payment_details = {
-					user_id: user_id,
+					user_id: partner_id,
 					payment_plan_id: payment_plan._id,
 					amount: amount,
 					currency: 'USD',
@@ -205,26 +217,23 @@ export class PaymentsService {
 				}
 
 				const save_payment = await this.paymentsRepository.RecordPaymentTransaction(payment_details);				
-				//handle the neccessary checks to determine if the plan minutes should be added or not
 				
-
-				//add the plan minutes to the user account
-				if (payment_type == "topup") {
-					await this.userRepository.addUserPlanMinutes(user_id, 120); //topup adds a fixed 120 minutes
-				}
-
-
-				await this.userRepository.addUserPlanMinutes(user_id, payment_plan.plan_minutes);
-
+				// Note: Partners don't have plan minutes like users
+				// This logic may need to be redesigned for partner billing model
+				
 				//Add a new User Subscription Record for Subscriptions
-				
-				//if it is a topup create a topup subscription record and also the subscription expiry date
 				const subscription_type = payment_type == "topup" ? "topup" : "subscription";
-				const subscription_end_date = payment_type == "topup" ? new Date( user_full_profile.parsedSubscriptions.subscription.subscription_end_date ) : null;
-				await this.paymentsRepository.CreateUserSubscriptionRecord(user_id, payment_plan._id as string, save_payment._id as string, subscription_type as string, subscription_end_date as Date | null );
+				const subscription_end_date = null; // Partners don't have subscription end dates like users
+				await this.paymentsRepository.CreateUserSubscriptionRecord(
+					partner_id, 
+					payment_plan._id as string, 
+					save_payment._id as string, 
+					subscription_type as string, 
+					subscription_end_date
+				);
 
-				//log the activity into th database
-				await this.logger.activity_log(user_id, 'purchase_plan', 'payments', `Purchased ${payment_plan.plan_name} Plan`, { plan_id: payment_plan._id, payment_id: save_payment._id });
+				//log the activity into the database
+				await this.logger.activity_log(partner_id, 'purchase_plan', 'payments', `Purchased ${payment_plan.plan_name} Plan`, { plan_id: payment_plan._id, payment_id: save_payment._id });
 				return save_payment;
 			}	
 
