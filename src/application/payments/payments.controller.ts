@@ -45,9 +45,10 @@ export class PaymentsController {
     async SaveCard(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const user_id = req.curr_user?._id?.toString() as string;
+            const account_type = req.account_type;
             //get user details from the db
             try {
-                const save_card = await this.paymentService.SaveCard(user_id, req.body);
+                const save_card = await this.paymentService.SaveCard(user_id, req.body, "true", account_type);
                 ApiResponse.ok(save_card, 'Card saved successfully').send(res);
             } catch (error) {
                 this.logger.error('Error Saving Card', error);

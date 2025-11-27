@@ -58,12 +58,16 @@ export class DashboardService {
 			total_candidates,
 			completed_this_month,
 			completed_all_time,
-			avg_score
+			avg_score,
+			paymentStats,
+			inviteStats
 		] = await Promise.all([
 			this.dashboardRepository.getTotalCandidatesForPartner(partner_id),
 			this.dashboardRepository.getCompletedSessionsThisMonth(partner_id),
 			this.dashboardRepository.getCompletedSessionsAllTime(partner_id),
-			this.dashboardRepository.getAverageCandidateScore(partner_id)
+			this.dashboardRepository.getAverageCandidateScore(partner_id),
+			this.dashboardRepository.getCandidatePaymentStats(partner_id),
+			this.dashboardRepository.getCandidateInviteStats(partner_id)
 		]);
 
 		// Determine performance level based on average score
@@ -77,7 +81,11 @@ export class DashboardService {
 			completed_sessions_this_month: completed_this_month,
 			completed_sessions_all_time: completed_all_time,
 			average_candidate_score: avg_score,
-			average_candidate_performance: performance
+			average_candidate_performance: performance,
+			candidates_paid: paymentStats.paid,
+			candidates_pending_payment: paymentStats.pending,
+			invites_accepted: inviteStats.accepted,
+			invites_pending: inviteStats.pending
 		};
 	}
 

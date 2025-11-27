@@ -3,6 +3,7 @@ import { Model } from 'mongoose';
 import mongoose from 'mongoose';
 import { IPartner } from '../../users/types/partner.types';
 import { IPractice } from '../../practice/models/practice.model';
+import { IPartnerCandidate } from '../../../databases/mongodb/model/partner_candidate.model';
 
 @injectable()
 export class DashboardRepository {
@@ -10,10 +11,11 @@ export class DashboardRepository {
         @inject('PartnerModel') private partnerModel: Model<IPartner>,
         @inject('PracticeModel') private practiceModel: Model<IPractice>,
         @inject('UserModel') private userModel: Model<any>,
+        @inject('PartnerCandidateModel') private partnerCandidateModel: Model<IPartnerCandidate>,
     ) {}
 
     async getTotalCandidatesForPartner(partner_id: string): Promise<number> {
-        const count = await this.userModel.countDocuments({ 
+        const count = await this.partnerCandidateModel.countDocuments({ 
             partner_id: new mongoose.Types.ObjectId(partner_id)
         });
         return count;
@@ -24,11 +26,12 @@ export class DashboardRepository {
         startOfMonth.setDate(1);
         startOfMonth.setHours(0, 0, 0, 0);
 
-        const candidates = await this.userModel.find({ 
+        // Get all candidate IDs for this partner
+        const partnerCandidates = await this.partnerCandidateModel.find({ 
             partner_id: new mongoose.Types.ObjectId(partner_id) 
-        }).select('_id');
+        }).select('candidate_id');
         
-        const candidateIds = candidates.map(c => c._id);
+        const candidateIds = partnerCandidates.map(pc => pc.candidate_id);
 
         const count = await this.practiceModel.countDocuments({
             userId: { $in: candidateIds },
@@ -40,11 +43,12 @@ export class DashboardRepository {
     }
 
     async getCompletedSessionsAllTime(partner_id: string): Promise<number> {
-        const candidates = await this.userModel.find({ 
+        // Get all candidate IDs for this partner
+        const partnerCandidates = await this.partnerCandidateModel.find({ 
             partner_id: new mongoose.Types.ObjectId(partner_id) 
-        }).select('_id');
+        }).select('candidate_id');
         
-        const candidateIds = candidates.map(c => c._id);
+        const candidateIds = partnerCandidates.map(pc => pc.candidate_id);
 
         const count = await this.practiceModel.countDocuments({
             userId: { $in: candidateIds },
@@ -55,11 +59,12 @@ export class DashboardRepository {
     }
 
     async getAverageCandidateScore(partner_id: string): Promise<number> {
-        const candidates = await this.userModel.find({ 
+        // Get all candidate IDs for this partner
+        const partnerCandidates = await this.partnerCandidateModel.find({ 
             partner_id: new mongoose.Types.ObjectId(partner_id) 
-        }).select('_id');
+        }).select('candidate_id');
         
-        const candidateIds = candidates.map(c => c._id);
+        const candidateIds = partnerCandidates.map(pc => pc.candidate_id);
 
         const result = await this.practiceModel.aggregate([
             { $match: { userId: { $in: candidateIds }, status: 'finished', score: { $exists: true, $ne: null } } },
@@ -70,11 +75,12 @@ export class DashboardRepository {
     }
 
     async getTotalRevenue(partner_id: string): Promise<number> {
-        const candidates = await this.userModel.find({ 
+        // Get all candidate IDs for this partner
+        const partnerCandidates = await this.partnerCandidateModel.find({ 
             partner_id: new mongoose.Types.ObjectId(partner_id) 
-        }).select('_id');
+        }).select('candidate_id');
         
-        const candidateIds = candidates.map(c => c._id);
+        const candidateIds = partnerCandidates.map(pc => pc.candidate_id);
 
         const result = await this.practiceModel.aggregate([
             { $match: { userId: { $in: candidateIds }, practiceCost: { $exists: true, $ne: null } } },
@@ -85,11 +91,12 @@ export class DashboardRepository {
     }
 
     async getPracticeSessionsStats(partner_id: string): Promise<{ purchased: number; utilized: number }> {
-        const candidates = await this.userModel.find({ 
+        // Get all candidate IDs for this partner
+        const partnerCandidates = await this.partnerCandidateModel.find({ 
             partner_id: new mongoose.Types.ObjectId(partner_id) 
-        }).select('_id');
+        }).select('candidate_id');
         
-        const candidateIds = candidates.map(c => c._id);
+        const candidateIds = partnerCandidates.map(pc => pc.candidate_id);
 
         const totalPurchased = await this.practiceModel.countDocuments({ userId: { $in: candidateIds } });
         const totalUtilized = await this.practiceModel.countDocuments({ userId: { $in: candidateIds }, status: 'finished' });
@@ -98,11 +105,12 @@ export class DashboardRepository {
     }
 
     async getPracticeSessionsTaken(partner_id: string): Promise<{ total: number; this_month: number; this_week: number }> {
-        const candidates = await this.userModel.find({ 
+        // Get all candidate IDs for this partner
+        const partnerCandidates = await this.partnerCandidateModel.find({ 
             partner_id: new mongoose.Types.ObjectId(partner_id) 
-        }).select('_id');
+        }).select('candidate_id');
         
-        const candidateIds = candidates.map(c => c._id);
+        const candidateIds = partnerCandidates.map(pc => pc.candidate_id);
 
         const total = await this.practiceModel.countDocuments({ userId: { $in: candidateIds }, status: 'finished' });
 
@@ -130,11 +138,12 @@ export class DashboardRepository {
     }
 
     async getFeedbackTrends(partner_id: string): Promise<{ positive: number; neutral: number; negative: number; average_rating: number }> {
-        const candidates = await this.userModel.find({ 
+        // Get all candidate IDs for this partner
+        const partnerCandidates = await this.partnerCandidateModel.find({ 
             partner_id: new mongoose.Types.ObjectId(partner_id) 
-        }).select('_id');
+        }).select('candidate_id');
         
-        const candidateIds = candidates.map(c => c._id);
+        const candidateIds = partnerCandidates.map(pc => pc.candidate_id);
 
         const sessions = await this.practiceModel.find({
             userId: { $in: candidateIds },
@@ -165,11 +174,12 @@ export class DashboardRepository {
     }
 
     async getPopularExamTypes(partner_id: string): Promise<Array<{ exam_type: string; session_count: number }>> {
-        const candidates = await this.userModel.find({ 
+        // Get all candidate IDs for this partner
+        const partnerCandidates = await this.partnerCandidateModel.find({ 
             partner_id: new mongoose.Types.ObjectId(partner_id) 
-        }).select('_id');
+        }).select('candidate_id');
         
-        const candidateIds = candidates.map(c => c._id);
+        const candidateIds = partnerCandidates.map(pc => pc.candidate_id);
 
         const result = await this.practiceModel.aggregate([
             { $match: { userId: { $in: candidateIds }, examId: { $exists: true } } },
@@ -189,12 +199,52 @@ export class DashboardRepository {
             .lean();
     }
 
+    async getCandidatePaymentStats(partner_id: string): Promise<{ paid: number; pending: number }> {
+        const paidCount = await this.partnerCandidateModel.countDocuments({
+            partner_id: new mongoose.Types.ObjectId(partner_id),
+            is_paid_for: true
+        });
+
+        const pendingCount = await this.partnerCandidateModel.countDocuments({
+            partner_id: new mongoose.Types.ObjectId(partner_id),
+            is_paid_for: false
+        });
+
+        return { paid: paidCount, pending: pendingCount };
+    }
+
+    async getCandidateInviteStats(partner_id: string): Promise<{ accepted: number; pending: number; expired: number }> {
+        const acceptedCount = await this.partnerCandidateModel.countDocuments({
+            partner_id: new mongoose.Types.ObjectId(partner_id),
+            invite_status: 'accepted'
+        });
+
+        const pendingCount = await this.partnerCandidateModel.countDocuments({
+            partner_id: new mongoose.Types.ObjectId(partner_id),
+            invite_status: 'pending'
+        });
+
+        const expiredCount = await this.partnerCandidateModel.countDocuments({
+            partner_id: new mongoose.Types.ObjectId(partner_id),
+            invite_status: 'expired'
+        });
+
+        return { accepted: acceptedCount, pending: pendingCount, expired: expiredCount };
+    }
+
     async getRecentActivities(partner_id: string, limit: number = 10): Promise<any[]> {
-        const candidates = await this.userModel.find({ 
+        // Get all candidate IDs for this partner
+        const partnerCandidates = await this.partnerCandidateModel.find({ 
             partner_id: new mongoose.Types.ObjectId(partner_id) 
+        }).select('candidate_id');
+        
+        const candidateIds = partnerCandidates.map(pc => pc.candidate_id);
+
+        // Get candidate details
+        const candidates = await this.userModel.find({ 
+            _id: { $in: candidateIds }
         }).select('_id firstname lastname');
         
-        const candidateIds = candidates.map(c => c._id);
         const candidateMap = new Map(candidates.map(c => [c._id.toString(), `${c.firstname} ${c.lastname}`]));
 
         const recentSessions = await this.practiceModel.find({

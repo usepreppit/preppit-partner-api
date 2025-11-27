@@ -2,7 +2,7 @@ import { inject, injectable } from 'inversify';
 import { Logger } from '../../startup/logger';
 import { ApiError } from '../../helpers/error.helper';
 import { SetupStripeIntent, createStripeCustomer, getDefaultCard, getCustomerCards, addCardToCustomer, GetStripeCustomer, DebitCustomerCard } from '../../helpers/billings/stripe.helper';
-import { UserRepository } from '../users/models/user.repository';
+import { PartnerRepository } from '../users/models/partner.repository';
 import { PaymentsRepository } from './models/payments.repository';
 import { IPaymentPlans } from './models/payment_plans.model';
 import { IPayments } from './models/payments.models';
@@ -15,7 +15,7 @@ export class PaymentsService {
     constructor(
 		@inject(Logger) private readonly logger: Logger,
 		@inject(PaymentsRepository) private readonly paymentsRepository: PaymentsRepository,
-		@inject(UserRepository) private readonly userRepository: UserRepository,
+		@inject(PartnerRepository) private readonly partnerRepository: PartnerRepository,
 
     ) {}
 
@@ -93,7 +93,7 @@ export class PaymentsService {
 		}
 	}
 
-	async SaveCard(user_id: string, req: any, is_default: string = "true"): Promise<any> {
+	async SaveCard(user_id: string, req: any, is_default: string = "true", account_type?: 'admin' | 'partner'): Promise<any> {
 		try {
 			//check user payment profile 
 			const user_full_profile = await this.userRepository.getFullUserDetails(user_id);
@@ -107,6 +107,15 @@ export class PaymentsService {
 			//get the customer payment method
 			// const customer_payment_method = user_full_profile.payments[user_full_profile.payments.length - 1].payment_customer_details.payment_method;
 			const attach_card = await addCardToCustomer(stripe_customer_id, req.payment_method, is_default == "true" );
+
+			// Mark "payment method setup" step as complete on dashboard for partners
+			if (account_type === 'partner') {
+				const partner = await this.partnerRepository.findById(user_id);
+				if (partner && !partner.payment_method_setup) {
+					await this.partnerRepository.markPaymentMethodSetup(user_id);
+					this.logger.info(`Marked payment method setup for partner: ${user_id}`);
+				}
+			}
 
 			return attach_card;
 		} catch (error) {

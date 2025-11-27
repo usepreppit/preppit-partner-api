@@ -2,6 +2,7 @@ import { inject, injectable } from 'inversify';
 import { Logger } from '../../startup/logger';
 import { ApiError, ValidationError } from '../../helpers/error.helper';
 import { CandidatesRepository } from './models/candidates.repository';
+import { PartnerRepository } from '../users/models/partner.repository';
 import {
     CreateBatchDTO,
     CreateCandidateDTO,
@@ -17,6 +18,7 @@ export class CandidatesService {
     constructor(
         @inject(Logger) private readonly logger: Logger,
         @inject(CandidatesRepository) private readonly candidatesRepository: CandidatesRepository,
+        @inject(PartnerRepository) private readonly partnerRepository: PartnerRepository,
     ) {}
 
     async createBatch(partner_id: string, data: CreateBatchDTO): Promise<ICandidateBatch> {
@@ -61,6 +63,13 @@ export class CandidatesService {
                 data.lastname,
                 data.email
             );
+
+            // Mark "add candidates" step as complete on dashboard (only on first candidate)
+            const partner = await this.partnerRepository.findById(partner_id);
+            if (partner && !partner.has_added_candidates) {
+                await this.partnerRepository.markCandidateAdded(partner_id);
+                this.logger.info(`Marked first candidate added for partner: ${partner_id}`);
+            }
 
             this.logger.info(`Candidate created: ${result.user._id} for partner: ${partner_id}`);
             return result.user;
@@ -276,6 +285,15 @@ export class CandidatesService {
                     // Mark remaining as failed
                     const failedCount = candidatesToCreate.length - (bulkError.insertedDocs?.length || 0);
                     results.failed += failedCount;
+                }
+            }
+
+            // Mark "add candidates" step as complete on dashboard (only on first successful upload)
+            if (results.successful > 0) {
+                const partner = await this.partnerRepository.findById(partner_id);
+                if (partner && !partner.has_added_candidates) {
+                    await this.partnerRepository.markCandidateAdded(partner_id);
+                    this.logger.info(`Marked first candidate added via CSV for partner: ${partner_id}`);
                 }
             }
 

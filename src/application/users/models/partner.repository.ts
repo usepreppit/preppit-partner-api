@@ -38,4 +38,26 @@ export class PartnerRepository {
     async getFullPartnerDetails(id: string): Promise<IPartner | null | any> {
         return await this.partnerModel.findById(id).lean();
     }
+
+    async markCandidateAdded(partner_id: string): Promise<void> {
+        await this.partnerModel.findByIdAndUpdate(
+            partner_id,
+            {
+                has_added_candidates: true,
+                first_candidate_added_at: new Date()
+            },
+            { new: true }
+        );
+    }
+
+    async markPaymentMethodSetup(partner_id: string): Promise<void> {
+        await this.partnerModel.findByIdAndUpdate(
+            partner_id,
+            {
+                payment_method_setup: true,
+                payment_method_setup_at: new Date()
+            },
+            { new: true }
+        );
+    }
 }

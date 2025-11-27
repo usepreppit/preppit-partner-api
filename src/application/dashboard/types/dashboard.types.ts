@@ -6,6 +6,10 @@ export interface KeyMetrics {
     completed_sessions_all_time: number;
     average_candidate_score: number;
     average_candidate_performance: string; // "Excellent" | "Good" | "Fair" | "Needs Improvement"
+    candidates_paid: number; // Number of candidates marked as paid
+    candidates_pending_payment: number; // Number of candidates not yet paid
+    invites_accepted: number; // Number of candidates who accepted invite
+    invites_pending: number; // Number of pending invites
 }
 
 export interface FinanceMetrics {
