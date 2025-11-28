@@ -53,18 +53,54 @@ Get saved payment methods and auto-renew preference for the logged-in partner.
 
 ---
 
-### 2. Get Pricing
-**GET** `/payments/pricing?candidate_count={count}&months={months}`
+### 2. Get Unpaid Candidates in Batch
+**GET** `/candidates/batches/:batch_id/unpaid`
 
-Calculate the price for a given number of candidates and subscription duration.
+Get the list and count of unpaid candidates in a specific batch.
+
+**Headers:**
+- `Authorization: Bearer <JWT_TOKEN>`
+
+**Parameters:**
+- `batch_id` (path parameter): The ID of the batch
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "batch_id": "batch_123",
+    "batch_name": "January 2025 Cohort",
+    "unpaid_count": 5,
+    "unpaid_candidates": [
+      {
+        "candidate_id": "user_123",
+        "email": "john@example.com",
+        "firstname": "John",
+        "lastname": "Doe",
+        "invite_status": "pending"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 3. Get Pricing
+**GET** `/payments/pricing?candidate_count={count}&months={months}&batch_id={batch_id}&include_unpaid={boolean}`
+
+Calculate the price for a given number of candidates and subscription duration. Optionally include unpaid candidates from a specific batch.
 
 **Query Parameters:**
-- `candidate_count` (required): Number of candidates (integer)
+- `candidate_count` (required): Number of new candidates (integer)
 - `months` (required): Subscription duration in months (integer)
+- `batch_id` (optional): Batch ID to check for unpaid candidates
+- `include_unpaid` (optional): Whether to include unpaid candidates from the batch (true/false)
 
 **Example:**
 ```
-GET /payments/pricing?candidate_count=50&months=6
+GET /payments/pricing?candidate_count=10&months=6&batch_id=batch_123&include_unpaid=true
 ```
 
 **Response:**
@@ -73,24 +109,27 @@ GET /payments/pricing?candidate_count=50&months=6
   "status": "success",
   "data": {
     "per_candidate": 51,
-    "total": 2550,
+    "total": 765,
     "breakdown": {
-      "candidate_count": 50,
+      "candidate_count": 15,
       "months": 6,
       "base_price_per_candidate": 60,
-      "volume_discount": 15,
-      "final_price_per_candidate": 51
-    }
+      "volume_discount": 10,
+      "final_price_per_candidate": 54
+    },
+    "new_candidates": 10,
+    "unpaid_candidates_in_batch": 5,
+    "total_candidates": 15
   }
 }
 ```
 
 ---
 
-### 3. Process Payment
+### 4. Process Payment
 **POST** `/payments/process`
 
-Process a payment for candidate access.
+Process a payment for candidate access. Optionally include unpaid candidates from a batch.
 
 **Headers:**
 - `Authorization: Bearer <JWT_TOKEN>`
@@ -98,12 +137,22 @@ Process a payment for candidate access.
 **Request Body:**
 ```json
 {
-  "candidate_count": 50,
+  "candidate_count": 10,
   "months": 6,
   "payment_method_id": "pm_xxxxxxxxxx",
-  "auto_renew": true
+  "auto_renew": true,
+  "batch_id": "batch_123",
+  "include_unpaid": true
 }
 ```
+
+**Request Fields:**
+- `candidate_count` (required): Number of new candidates to pay for
+- `months` (required): Subscription duration in months
+- `payment_method_id` (required): Stripe payment method ID
+- `auto_renew` (optional): Enable auto-renewal (default: false)
+- `batch_id` (optional): Batch ID if including unpaid candidates
+- `include_unpaid` (optional): Whether to include unpaid candidates from the batch
 
 **Response:**
 ```json
@@ -114,31 +163,33 @@ Process a payment for candidate access.
       "_id": "...",
       "user_id": "partner_id",
       "transaction_type": "debit",
-      "amount": 2550,
+      "amount": 765,
       "currency": "usd",
       "payment_status": "successful",
-      "description": "Payment for 50 candidates for 6 month(s)",
+      "description": "Payment for 15 candidates for 6 month(s) (including 5 unpaid)",
       "transaction_details": {
-        "candidate_count": 50,
+        "candidate_count": 15,
         "months": 6,
+        "unpaid_candidates": 5,
+        "batch_id": "batch_123",
         "pricing": {
-          "candidate_count": 50,
+          "candidate_count": 15,
           "months": 6,
           "base_price_per_candidate": 60,
-          "volume_discount": 15,
-          "final_price_per_candidate": 51
+          "volume_discount": 10,
+          "final_price_per_candidate": 54
         }
       }
     },
     "pricing": {
-      "per_candidate": 51,
-      "total": 2550,
+      "per_candidate": 54,
+      "total": 765,
       "breakdown": {
-        "candidate_count": 50,
+        "candidate_count": 15,
         "months": 6,
         "base_price_per_candidate": 60,
-        "volume_discount": 15,
-        "final_price_per_candidate": 51
+        "volume_discount": 10,
+        "final_price_per_candidate": 54
       }
     },
     "charge_id": "ch_xxxxxxxxxx"
@@ -258,6 +309,7 @@ req.curr_user?._id?.toString()
 
 ## Payment Flow
 
+### Standard Payment Flow
 1. **Partner adds payment method** → SaveCard() → Auto-marks `payment_method_setup = true`
 2. **Partner views payment methods** → GET /payment-methods
 3. **Partner calculates price** → GET /pricing?candidate_count=X&months=Y
@@ -265,6 +317,34 @@ req.curr_user?._id?.toString()
    - Stripe charges the card
    - Payment record created in database
    - Auto-renew preference updated
+
+### Payment Flow with Unpaid Candidates
+1. **Partner starts payment for a batch** → Frontend shows batch selection
+2. **Check for unpaid candidates in batch** → GET /candidates/batches/:batch_id/unpaid
+3. **Display unpaid candidates** → Frontend shows checkbox with unpaid count
+4. **Partner views pricing options**:
+   - Without unpaid: GET /pricing?candidate_count=10&months=6
+   - With unpaid: GET /pricing?candidate_count=10&months=6&batch_id=123&include_unpaid=true
+5. **Partner processes payment** → POST /process with `include_unpaid` flag
+   - If `include_unpaid=true` and `batch_id` provided, unpaid candidates from that batch are included
+   - Total amount covers both new and unpaid candidates from the batch
+   - Payment record includes breakdown of new vs unpaid candidates
+
+**Example Flow:**
+```
+1. Partner uploads 10 new candidates to "January 2025" batch
+2. System checks: "January 2025" batch has 5 unpaid candidates
+3. Frontend shows: 
+   - "New candidates: 10"
+   - "☑ Include 5 unpaid candidates from this batch"
+4. If checkbox checked:
+   - GET /pricing?candidate_count=10&months=6&batch_id=batch_123&include_unpaid=true
+   - Response: total_candidates=15, unpaid_candidates_in_batch=5
+5. Partner confirms payment
+6. POST /process with include_unpaid=true
+   - Charges for all 15 candidates
+   - Marks the 5 previously unpaid candidates as paid
+```
 
 ---
 
