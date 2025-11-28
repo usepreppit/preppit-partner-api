@@ -26,6 +26,12 @@ export default (app: Router) => {
         '/batches',
         candidatesController.GetAllBatches.bind(candidatesController)
     );
+
+    // Get unpaid candidates in a specific batch
+    route.get(
+        '/batches/:batch_id/unpaid',
+        candidatesController.GetUnpaidCandidatesInBatch.bind(candidatesController)
+    );
     
     // Create a new candidate batch
     route.post(

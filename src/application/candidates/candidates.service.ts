@@ -469,4 +469,70 @@ export class CandidatesService {
             throw new ApiError(500, 'Failed to accept invite');
         }
     }
+
+    async getUnpaidCandidatesInBatch(partner_id: string, batch_id: string): Promise<{
+        batch_id: string;
+        batch_name: string;
+        unpaid_count: number;
+        unpaid_candidates: Array<{
+            candidate_id: string;
+            email: string;
+            firstname: string;
+            lastname: string;
+            invite_status: string;
+        }>;
+    }> {
+        try {
+            // Verify batch exists and belongs to partner
+            const batch = await this.candidatesRepository.getBatchById(batch_id);
+            if (!batch) {
+                throw new ValidationError('Batch not found');
+            }
+            if (batch.partner_id.toString() !== partner_id) {
+                throw new ValidationError('Batch does not belong to this partner');
+            }
+
+            // Get unpaid count
+            const unpaid_count = await this.candidatesRepository.getUnpaidCandidatesCountByBatch(
+                partner_id,
+                batch_id
+            );
+
+            // Get unpaid candidates with details
+            const unpaidPartnerCandidates = await this.candidatesRepository.getUnpaidCandidatesByBatch(
+                partner_id,
+                batch_id
+            );
+
+            // Get candidate details
+            const candidateIds = unpaidPartnerCandidates.map(pc => pc.candidate_id.toString());
+            const candidates = await this.candidatesRepository.getCandidatesByIds(candidateIds);
+
+            const unpaid_candidates = candidates.map(candidate => {
+                const partnerCandidate = unpaidPartnerCandidates.find(
+                    pc => pc.candidate_id.toString() === candidate._id?.toString()
+                );
+                return {
+                    candidate_id: candidate._id?.toString() || '',
+                    email: candidate.email,
+                    firstname: candidate.firstname,
+                    lastname: candidate.lastname || '',
+                    invite_status: partnerCandidate?.invite_status || 'pending'
+                };
+            });
+
+            return {
+                batch_id: batch._id.toString(),
+                batch_name: batch.batch_name,
+                unpaid_count,
+                unpaid_candidates
+            };
+        } catch (error: any) {
+            if (error instanceof ValidationError || error instanceof ApiError) {
+                throw error;
+            }
+            this.logger.error('Error getting unpaid candidates:', error);
+            throw new ApiError(500, 'Failed to get unpaid candidates');
+        }
+    }
 }

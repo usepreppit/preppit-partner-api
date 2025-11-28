@@ -4,6 +4,7 @@ import { ApiError } from '../../helpers/error.helper';
 import { SetupStripeIntent, createStripeCustomer, getDefaultCard, getCustomerCards, addCardToCustomer, GetStripeCustomer, DebitCustomerCard } from '../../helpers/billings/stripe.helper';
 import { PartnerRepository } from '../users/models/partner.repository';
 import { PaymentsRepository } from './models/payments.repository';
+import { CandidatesRepository } from '../candidates/models/candidates.repository';
 import { IPaymentPlans } from './models/payment_plans.model';
 import { IPayments } from './models/payments.models';
 // import { TransactionRepository } from './models/transactions.repository';
@@ -16,6 +17,7 @@ export class PaymentsService {
 		@inject(Logger) private readonly logger: Logger,
 		@inject(PaymentsRepository) private readonly paymentsRepository: PaymentsRepository,
 		@inject(PartnerRepository) private readonly partnerRepository: PartnerRepository,
+		@inject(CandidatesRepository) private readonly candidatesRepository: CandidatesRepository,
 
     ) {}
 
@@ -397,4 +399,167 @@ export class PaymentsService {
 
 	// 	return { transaction: create_transaction, wallet: update_wallet_balance };
 	// }
+
+	async getPaymentMethods(partner_id: string): Promise<{ cards: any[]; auto_renew: boolean }> {
+		try {
+			// Get partner payment profile
+			const partner_profile = await this.partnerRepository.getFullPartnerDetails(partner_id);
+			
+			if (!partner_profile.payments || !partner_profile.payments.length) {
+				return { cards: [], auto_renew: false };
+			}
+			
+			// Get partner's saved cards from Stripe
+			const stripe_customer_id = partner_profile.payments[0].stripe_customer_id;
+			const cards = await getCustomerCards(stripe_customer_id);
+			
+			// Get auto-renew preference (default to false if not set)
+			const auto_renew = partner_profile.auto_renew_subscription || false;
+			
+			return { cards, auto_renew };
+		} catch (error) {
+			this.logger.error(`Error fetching payment methods: ${error}`);
+			throw new ApiError(400, 'Error fetching payment methods', error);
+		}
+	}
+
+	async getUnpaidCountInBatch(partner_id: string, batch_id: string): Promise<number> {
+		try {
+			const unpaid_count = await this.candidatesRepository.getUnpaidCandidatesCountByBatch(
+				partner_id,
+				batch_id
+			);
+			return unpaid_count;
+		} catch (error) {
+			this.logger.error(`Error getting unpaid count: ${error}`);
+			throw new ApiError(400, 'Error getting unpaid candidates count', error);
+		}
+	}
+
+	async calculatePricing(candidate_count: number, months: number): Promise<{
+		per_candidate: number; 
+		total: number;
+		breakdown: {
+			candidate_count: number;
+			months: number;
+			base_price_per_candidate: number;
+			volume_discount: number;
+			final_price_per_candidate: number;
+		}
+	}> {
+		try {
+			// Base price calculation
+			// $10 per candidate per month as base
+			const basePricePerCandidatePerMonth = 10;
+			const basePrice = basePricePerCandidatePerMonth * months;
+			
+			// Determine volume discount based on candidate count
+			let discountPercentage = 0;
+			let multiplier = 1;
+			
+			if (candidate_count >= 100) {
+				discountPercentage = 20;
+				multiplier = 0.8; // 20% discount
+			} else if (candidate_count >= 50) {
+				discountPercentage = 15;
+				multiplier = 0.85; // 15% discount
+			} else if (candidate_count >= 10) {
+				discountPercentage = 10;
+				multiplier = 0.9; // 10% discount
+			}
+			
+			// Calculate final price per candidate
+			const perCandidate = Math.round(basePrice * multiplier);
+			
+			// Calculate total
+			const total = perCandidate * candidate_count;
+			
+			return { 
+				per_candidate: perCandidate,
+				total,
+				breakdown: {
+					candidate_count,
+					months,
+					base_price_per_candidate: basePrice,
+					volume_discount: discountPercentage,
+					final_price_per_candidate: perCandidate
+				}
+			};
+		} catch (error) {
+			this.logger.error(`Error calculating pricing: ${error}`);
+			throw new ApiError(400, 'Error calculating pricing', error);
+		}
+	}
+
+	async processPayment(
+		partner_id: string,
+		candidate_count: number,
+		months: number,
+		payment_method_id: string,
+		auto_renew: boolean,
+		batch_id?: string,
+		unpaid_candidates?: number
+	): Promise<any> {
+		try {
+			// Calculate pricing
+			const pricing = await this.calculatePricing(candidate_count, months);
+			
+			// Get partner payment profile
+			const partner_profile = await this.partnerRepository.getFullPartnerDetails(partner_id);
+			
+			if (!partner_profile.payments || !partner_profile.payments.length) {
+				throw new ApiError(400, 'No payment profile found. Please add a payment method first.');
+			}
+			
+			const stripe_customer_id = partner_profile.payments[0].stripe_customer_id;
+			
+			// Process the payment
+			const charge = await DebitCustomerCard(
+				stripe_customer_id,
+				payment_method_id,
+				pricing.total
+			);
+			
+			if (!charge || charge.status !== 'succeeded') {
+				throw new ApiError(400, 'Payment failed. Please try again or use a different payment method.');
+			}
+			
+			// Create payment record
+			const payment_data = {
+				user_id: partner_id, // Using partner_id as user_id for compatibility
+				transaction_type: 'debit' as const,
+				amount: pricing.total,
+				currency: 'usd',
+				payment_method: payment_method_id,
+				payment_processor: 'stripe',
+				payment_processor_payment_id: charge.id,
+				payment_status: 'successful',
+				description: `Payment for ${candidate_count} candidates for ${months} month(s)${unpaid_candidates ? ` (including ${unpaid_candidates} unpaid)` : ''}`,
+				transaction_details: {
+					candidate_count,
+					months,
+					unpaid_candidates: unpaid_candidates || 0,
+					batch_id: batch_id || null,
+					pricing: pricing.breakdown,
+					charge_details: charge
+				}
+			};
+			
+			const payment_record = await this.paymentsRepository.RecordPaymentTransaction(payment_data);
+			
+			// Update auto-renew preference if different from current
+			if (auto_renew !== partner_profile.auto_renew_subscription) {
+				await this.partnerRepository.updateAutoRenewPreference(partner_id, auto_renew);
+			}
+			
+			return {
+				payment: payment_record,
+				pricing,
+				charge_id: charge.id
+			};
+		} catch (error: any) {
+			this.logger.error(`Error processing payment: ${error}`);
+			throw new ApiError(400, error.message || 'Error processing payment', error);
+		}
+	}
 }

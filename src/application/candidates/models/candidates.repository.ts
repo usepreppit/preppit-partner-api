@@ -406,6 +406,12 @@ export class CandidatesRepository {
         return await this.userModel.findById(candidate_id).lean();
     }
 
+    async getCandidatesByIds(candidate_ids: string[]): Promise<IUser[]> {
+        return await this.userModel.find({
+            _id: { $in: candidate_ids.map(id => new mongoose.Types.ObjectId(id)) }
+        }).lean();
+    }
+
     async getPartnerCandidateById(partner_candidate_id: string): Promise<IPartnerCandidate | null> {
         return await this.partnerCandidateModel.findById(partner_candidate_id).lean();
     }
@@ -417,6 +423,28 @@ export class CandidatesRepository {
         return await this.partnerCandidateModel.findOne({
             partner_id: new mongoose.Types.ObjectId(partner_id),
             candidate_id: new mongoose.Types.ObjectId(candidate_id)
+        }).lean();
+    }
+
+    async getUnpaidCandidatesCountByBatch(
+        partner_id: string,
+        batch_id: string
+    ): Promise<number> {
+        return await this.partnerCandidateModel.countDocuments({
+            partner_id: new mongoose.Types.ObjectId(partner_id),
+            batch_id: new mongoose.Types.ObjectId(batch_id),
+            is_paid_for: false
+        });
+    }
+
+    async getUnpaidCandidatesByBatch(
+        partner_id: string,
+        batch_id: string
+    ): Promise<IPartnerCandidate[]> {
+        return await this.partnerCandidateModel.find({
+            partner_id: new mongoose.Types.ObjectId(partner_id),
+            batch_id: new mongoose.Types.ObjectId(batch_id),
+            is_paid_for: false
         }).lean();
     }
 }

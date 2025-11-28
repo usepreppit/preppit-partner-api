@@ -60,4 +60,14 @@ export class PartnerRepository {
             { new: true }
         );
     }
+
+    async updateAutoRenewPreference(partner_id: string, auto_renew: boolean): Promise<void> {
+        await this.partnerModel.findByIdAndUpdate(
+            partner_id,
+            {
+                auto_renew_subscription: auto_renew
+            },
+            { new: true }
+        );
+    }
 }
