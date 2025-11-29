@@ -14,6 +14,7 @@ import { DashboardController } from '../../application/dashboard/dashboard.contr
 import { CandidatesController } from '../../application/candidates/candidates.controller';
 import { PaymentsController } from '../../application/payments/payments.controller';
 import { SubscriptionsController } from '../../application/subscriptions/subscriptions.controller';
+import { TransactionsController } from '../../application/transactions/transactions.controller';
 
 
 // Import Services
@@ -26,6 +27,7 @@ import { DashboardService } from '../../application/dashboard/dashboard.service'
 import { CandidatesService } from '../../application/candidates/candidates.service';
 import { PaymentsService } from '../../application/payments/payments.service';
 import { SubscriptionService } from '../../application/subscriptions/subscriptions.service';
+import { TransactionsService } from '../../application/transactions/transactions.service';
 
 
 // import { UserService } from '../../features/users/service/user.service';
@@ -68,6 +70,7 @@ import { DashboardRepository } from '../../application/dashboard/models/dashboar
 import { CandidatesRepository } from '../../application/candidates/models/candidates.repository';
 import { PaymentsRepository } from '../../application/payments/models/payments.repository';
 import { SubscriptionRepository } from '../../application/subscriptions/models/subscriptions.repository';
+import { TransactionRepository } from '../../application/transactions/models/transactions.repository';
 
 
 
@@ -88,6 +91,7 @@ container.bind<DashboardController>(DashboardController).toSelf();
 container.bind<CandidatesController>(CandidatesController).toSelf();
 container.bind<PaymentsController>(PaymentsController).toSelf();
 container.bind<SubscriptionsController>(SubscriptionsController).toSelf();
+container.bind<TransactionsController>(TransactionsController).toSelf();
 
 
 // Services
@@ -100,6 +104,7 @@ container.bind<DashboardService>(DashboardService).toSelf();
 container.bind<CandidatesService>(CandidatesService).toSelf();
 container.bind<PaymentsService>(PaymentsService).toSelf();
 container.bind<SubscriptionService>(SubscriptionService).toSelf();
+container.bind<TransactionsService>(TransactionsService).toSelf();
 
 
 
@@ -113,6 +118,7 @@ container.bind<DashboardRepository>(DashboardRepository).toSelf();
 container.bind<CandidatesRepository>(CandidatesRepository).toSelf();
 container.bind<PaymentsRepository>(PaymentsRepository).toSelf();
 container.bind<SubscriptionRepository>(SubscriptionRepository).toSelf();
+container.bind<TransactionRepository>(TransactionRepository).toSelf();
 
 
 //Models

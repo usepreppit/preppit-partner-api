@@ -10,6 +10,7 @@ import dashboard_router from '../application/dashboard/dashboard.router';
 import candidates_router from '../application/candidates/candidates.router';
 import payments_router from '../application/payments/payments.router';
 import subscriptions_router from '../application/subscriptions/subscriptions.router';
+import transactions_router from '../application/transactions/transactions.router';
 import { NotFoundError } from '../helpers/error.helper';
 
 
@@ -32,6 +33,7 @@ export default() => {
     candidates_router(app);
     payments_router(app);
     subscriptions_router(app);
+    transactions_router(app);
     app.use((_, __, next) => {
         next(new NotFoundError('Route not found'));
     });
