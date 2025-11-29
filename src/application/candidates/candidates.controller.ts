@@ -215,4 +215,42 @@ export class CandidatesController {
             next(error);
         }
     }
+
+    async GetAllSeatSubscriptions(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const partner_id = req.curr_user?._id?.toString() as string;
+
+            try {
+                const subscriptions = await this.candidatesService.getAllSeatSubscriptions(partner_id);
+                ApiResponse.ok(subscriptions, 'Seat subscriptions retrieved successfully').send(res);
+            } catch (error) {
+                next(error);
+            }
+        } catch (error) {
+            this.logger.error('Error in GetAllSeatSubscriptions:', error);
+            next(error);
+        }
+    }
+
+    async GetSeatSubscriptionById(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const partner_id = req.curr_user?._id?.toString() as string;
+            const { seat_id } = req.params;
+
+            if (!seat_id) {
+                ApiResponse.badRequest('seat_id is required').send(res);
+                return;
+            }
+
+            try {
+                const subscription = await this.candidatesService.getSeatSubscriptionById(partner_id, seat_id);
+                ApiResponse.ok(subscription, 'Seat subscription retrieved successfully').send(res);
+            } catch (error) {
+                next(error);
+            }
+        } catch (error) {
+            this.logger.error('Error in GetSeatSubscriptionById:', error);
+            next(error);
+        }
+    }
 }

@@ -491,4 +491,185 @@ export class CandidatesRepository {
     async incrementSeatsAssigned(seat_id: string, incrementBy: number = 1): Promise<any> {
         return await this.seatModel.findByIdAndUpdate(seat_id, { $inc: { seats_assigned: incrementBy } }, { new: true }).lean();
     }
+
+    async getAllSeatsByPartnerId(partner_id: string): Promise<any[]> {
+        const seats = await this.seatModel.aggregate([
+            {
+                $match: {
+                    partner_id: new mongoose.Types.ObjectId(partner_id)
+                }
+            },
+            {
+                $lookup: {
+                    from: 'candidatebatches',
+                    localField: 'batch_id',
+                    foreignField: '_id',
+                    as: 'batch'
+                }
+            },
+            {
+                $unwind: {
+                    path: '$batch',
+                    preserveNullAndEmptyArrays: true
+                }
+            },
+            {
+                $lookup: {
+                    from: 'partnercandidates',
+                    let: { batch_id: '$batch_id', partner_id: '$partner_id' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ['$batch_id', '$$batch_id'] },
+                                        { $eq: ['$partner_id', '$$partner_id'] }
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+                    as: 'candidates'
+                }
+            },
+            {
+                $addFields: {
+                    total_candidates: { $size: '$candidates' },
+                    paid_candidates: {
+                        $size: {
+                            $filter: {
+                                input: '$candidates',
+                                as: 'candidate',
+                                cond: { $eq: ['$$candidate.is_paid_for', true] }
+                            }
+                        }
+                    },
+                    unpaid_candidates: {
+                        $size: {
+                            $filter: {
+                                input: '$candidates',
+                                as: 'candidate',
+                                cond: { $eq: ['$$candidate.is_paid_for', false] }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                $project: {
+                    _id: 1,
+                    partner_id: 1,
+                    batch_id: 1,
+                    batch_name: '$batch.batch_name',
+                    seat_count: 1,
+                    seats_assigned: 1,
+                    seats_available: { $subtract: ['$seat_count', '$seats_assigned'] },
+                    sessions_per_day: 1,
+                    start_date: 1,
+                    end_date: 1,
+                    auto_renew_interval_days: 1,
+                    is_active: 1,
+                    total_candidates: 1,
+                    paid_candidates: 1,
+                    unpaid_candidates: 1,
+                    created_at: 1,
+                    updated_at: 1
+                }
+            },
+            {
+                $sort: { created_at: -1 }
+            }
+        ]);
+
+        return seats;
+    }
+
+    async getSeatById(seat_id: string): Promise<any | null> {
+        const seats = await this.seatModel.aggregate([
+            {
+                $match: {
+                    _id: new mongoose.Types.ObjectId(seat_id)
+                }
+            },
+            {
+                $lookup: {
+                    from: 'candidatebatches',
+                    localField: 'batch_id',
+                    foreignField: '_id',
+                    as: 'batch'
+                }
+            },
+            {
+                $unwind: {
+                    path: '$batch',
+                    preserveNullAndEmptyArrays: true
+                }
+            },
+            {
+                $lookup: {
+                    from: 'partnercandidates',
+                    let: { batch_id: '$batch_id', partner_id: '$partner_id' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ['$batch_id', '$$batch_id'] },
+                                        { $eq: ['$partner_id', '$$partner_id'] }
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+                    as: 'candidates'
+                }
+            },
+            {
+                $addFields: {
+                    total_candidates: { $size: '$candidates' },
+                    paid_candidates: {
+                        $size: {
+                            $filter: {
+                                input: '$candidates',
+                                as: 'candidate',
+                                cond: { $eq: ['$$candidate.is_paid_for', true] }
+                            }
+                        }
+                    },
+                    unpaid_candidates: {
+                        $size: {
+                            $filter: {
+                                input: '$candidates',
+                                as: 'candidate',
+                                cond: { $eq: ['$$candidate.is_paid_for', false] }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                $project: {
+                    _id: 1,
+                    partner_id: 1,
+                    batch_id: 1,
+                    batch_name: '$batch.batch_name',
+                    seat_count: 1,
+                    seats_assigned: 1,
+                    seats_available: { $subtract: ['$seat_count', '$seats_assigned'] },
+                    sessions_per_day: 1,
+                    start_date: 1,
+                    end_date: 1,
+                    auto_renew_interval_days: 1,
+                    is_active: 1,
+                    total_candidates: 1,
+                    paid_candidates: 1,
+                    unpaid_candidates: 1,
+                    created_at: 1,
+                    updated_at: 1
+                }
+            }
+        ]);
+
+        return seats.length > 0 ? seats[0] : null;
+    }
 }

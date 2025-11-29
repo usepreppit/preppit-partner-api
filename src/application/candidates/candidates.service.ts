@@ -581,4 +581,55 @@ export class CandidatesService {
             throw new ApiError(500, 'Failed to deactivate seat');
         }
     }
+
+    async getAllSeatSubscriptions(partner_id: string): Promise<any> {
+        try {
+            const seats = await this.candidatesRepository.getAllSeatsByPartnerId(partner_id);
+            
+            const total_subscriptions = seats.length;
+            const active_subscriptions = seats.filter(s => s.is_active).length;
+            const total_seats_purchased = seats.reduce((sum, s) => sum + s.seat_count, 0);
+            const total_seats_assigned = seats.reduce((sum, s) => sum + s.seats_assigned, 0);
+            const total_candidates = seats.reduce((sum, s) => sum + s.total_candidates, 0);
+
+            return {
+                total_subscriptions,
+                active_subscriptions,
+                total_seats_purchased,
+                total_seats_assigned,
+                total_seats_available: total_seats_purchased - total_seats_assigned,
+                total_candidates,
+                subscriptions: seats
+            };
+        } catch (error: any) {
+            if (error instanceof ValidationError || error instanceof ApiError) {
+                throw error;
+            }
+            this.logger.error('Error getting seat subscriptions:', error);
+            throw new ApiError(500, 'Failed to get seat subscriptions');
+        }
+    }
+
+    async getSeatSubscriptionById(partner_id: string, seat_id: string): Promise<any> {
+        try {
+            const seat = await this.candidatesRepository.getSeatById(seat_id);
+            
+            if (!seat) {
+                throw new ValidationError('Seat subscription not found');
+            }
+
+            // Verify seat belongs to partner
+            if (seat.partner_id.toString() !== partner_id) {
+                throw new ValidationError('Seat subscription does not belong to this partner');
+            }
+
+            return seat;
+        } catch (error: any) {
+            if (error instanceof ValidationError || error instanceof ApiError) {
+                throw error;
+            }
+            this.logger.error('Error getting seat subscription:', error);
+            throw new ApiError(500, 'Failed to get seat subscription');
+        }
+    }
 }
