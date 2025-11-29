@@ -106,11 +106,11 @@ export async function getDefaultCard(customer_id: string) {
     }
 }
 
-export async function getCustomerCards(customer_id: string) {
+export async function getCustomerCards(customer_id: string, limit: number = 10) {
     const paymentMethods = await stripe.paymentMethods.list({
         customer: customer_id,
         type: 'card',
-        limit: 1,
+        limit: limit,
     });
   
     return paymentMethods.data;
@@ -132,6 +132,36 @@ export async function DebitCustomerCard(customer_id: string, payment_method: str
     } catch (error) {
         console.error("Error creating Payment Intent:", error);
         throw new Error(`Failed to create Payment Intent : ${error}`);
+    }
+}
+
+export async function CreatePaymentIntent(customer_id: string, amount: number, metadata?: any) {
+    try {
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: amount * 100, // Amount in cents
+            currency: 'usd',
+            customer: customer_id,
+            payment_method_types: ['card'],
+            metadata: metadata || {},
+        });
+
+        return paymentIntent;
+    } catch (error) {
+        console.error("Error creating Payment Intent:", error);
+        throw new Error(`Failed to create Payment Intent : ${error}`);
+    }
+}
+
+export async function ConfirmPaymentIntent(payment_intent_id: string, payment_method_id: string) {
+    try {
+        const paymentIntent = await stripe.paymentIntents.confirm(payment_intent_id, {
+            payment_method: payment_method_id,
+        });
+
+        return paymentIntent;
+    } catch (error) {
+        console.error("Error confirming Payment Intent:", error);
+        throw new Error(`Failed to confirm Payment Intent : ${error}`);
     }
 }
 

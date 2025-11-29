@@ -1,7 +1,7 @@
 import { inject, injectable } from 'inversify';
 import { Logger } from '../../startup/logger';
 import { ApiError } from '../../helpers/error.helper';
-import { SetupStripeIntent, createStripeCustomer, getDefaultCard, getCustomerCards, addCardToCustomer, GetStripeCustomer, DebitCustomerCard } from '../../helpers/billings/stripe.helper';
+import { SetupStripeIntent, createStripeCustomer, getDefaultCard, getCustomerCards, addCardToCustomer, GetStripeCustomer, DebitCustomerCard, CreatePaymentIntent } from '../../helpers/billings/stripe.helper';
 import { PartnerRepository } from '../users/models/partner.repository';
 import { PaymentsRepository } from './models/payments.repository';
 import { CandidatesRepository } from '../candidates/models/candidates.repository';
@@ -52,7 +52,8 @@ export class PaymentsService {
 
 			console.log(partner_profile);
 			if(!partner_profile.payments || !partner_profile.payments.length) {
-				throw new ApiError(400, 'Error Getting payment details, Partner has no payment cards')
+				// Return empty array instead of throwing error - partner may not have cards yet
+				return { data: [] };
 			}
 			const stripe_customer_id = partner_profile.payments[partner_profile.payments.length - 1].payment_customer_id;
 			const default_card = await getDefaultCard(stripe_customer_id);
@@ -400,26 +401,245 @@ export class PaymentsService {
 	// 	return { transaction: create_transaction, wallet: update_wallet_balance };
 	// }
 
-	async getPaymentMethods(partner_id: string): Promise<{ cards: any[]; auto_renew: boolean }> {
+	async getPaymentMethods(partner_id: string): Promise<{ 
+		cards: any[]; 
+		auto_renew: boolean;
+		default_payment_method: string | null;
+		stripe_customer_id: string | null;
+	}> {
 		try {
 			// Get partner payment profile
 			const partner_profile = await this.partnerRepository.getFullPartnerDetails(partner_id);
 			
 			if (!partner_profile.payments || !partner_profile.payments.length) {
-				return { cards: [], auto_renew: false };
+				return { 
+					cards: [], 
+					auto_renew: false,
+					default_payment_method: null,
+					stripe_customer_id: null
+				};
 			}
 			
 			// Get partner's saved cards from Stripe
 			const stripe_customer_id = partner_profile.payments[0].stripe_customer_id;
-			const cards = await getCustomerCards(stripe_customer_id);
+			const cards = await getCustomerCards(stripe_customer_id, 20); // Get up to 20 cards
+			
+			// Get default payment method
+			const default_payment_method = partner_profile.payments[0]?.payment_customer_details?.invoice_settings?.default_payment_method || null;
 			
 			// Get auto-renew preference (default to false if not set)
 			const auto_renew = partner_profile.auto_renew_subscription || false;
 			
-			return { cards, auto_renew };
+			return { 
+				cards: cards || [], 
+				auto_renew,
+				default_payment_method,
+				stripe_customer_id
+			};
 		} catch (error) {
 			this.logger.error(`Error fetching payment methods: ${error}`);
 			throw new ApiError(400, 'Error fetching payment methods', error);
+		}
+	}
+
+	async setDefaultPaymentMethod(partner_id: string, payment_method_id: string): Promise<any> {
+		try {
+			// Get partner payment profile
+			const partner_profile = await this.partnerRepository.getFullPartnerDetails(partner_id);
+			
+			if (!partner_profile.payments || !partner_profile.payments.length) {
+				throw new ApiError(400, 'No payment profile found. Please add a payment method first.');
+			}
+
+			const stripe_customer_id = partner_profile.payments[0].stripe_customer_id;
+
+			// Set as default in Stripe
+			await addCardToCustomer(stripe_customer_id, payment_method_id, true);
+
+			// Update local record
+			await this.paymentsRepository.UpdatePaymentProfileByPaymentMethod(partner_id, payment_method_id);
+
+			return { success: true, default_payment_method: payment_method_id };
+		} catch (error) {
+			this.logger.error(`Error setting default payment method: ${error}`);
+			throw new ApiError(400, 'Error setting default payment method', error);
+		}
+	}
+
+	async createPaymentIntent(
+		partner_id: string,
+		batch_name: string,
+		seat_count: number,
+		sessions_per_day: 3 | 5 | 10 | -1,
+		months: number
+	): Promise<{ client_secret: string; amount: number; payment_intent_id: string }> {
+		try {
+			// Validate inputs
+			if (seat_count < 10) {
+				throw new ApiError(400, 'Minimum seat purchase is 10');
+			}
+
+			const validSessions = [3, 5, 10, -1];
+			if (!validSessions.includes(sessions_per_day)) {
+				throw new ApiError(400, 'Invalid sessions_per_day value. Must be 3, 5, 10, or -1 (unlimited)');
+			}
+
+			const validMonths = [1, 3, 6, 12];
+			if (!validMonths.includes(months)) {
+				throw new ApiError(400, 'Invalid months value. Must be 1, 3, 6, or 12');
+			}
+
+			if (!batch_name || batch_name.trim() === '') {
+				throw new ApiError(400, 'Batch name is required');
+			}
+
+			// Calculate pricing on backend (security!)
+			const pricing = await this.calculateSeatPricing(seat_count, sessions_per_day, months);
+
+			// Get partner's Stripe customer
+			const partner_profile = await this.partnerRepository.getFullPartnerDetails(partner_id);
+			if (!partner_profile.payments || !partner_profile.payments.length) {
+				throw new ApiError(400, 'No payment profile found. Please add a payment method first.');
+			}
+
+			const stripe_customer_id = partner_profile.payments[0].stripe_customer_id;
+
+			// Create payment intent with metadata
+			const paymentIntent = await CreatePaymentIntent(
+				stripe_customer_id,
+				pricing.total,
+				{
+					partner_id,
+					batch_name,
+					seat_count,
+					sessions_per_day,
+					months,
+					per_candidate: pricing.per_candidate,
+				}
+			);
+
+			return {
+				client_secret: paymentIntent.client_secret!,
+				amount: pricing.total,
+				payment_intent_id: paymentIntent.id
+			};
+		} catch (error: any) {
+			this.logger.error(`Error creating payment intent: ${error}`);
+			throw new ApiError(400, error.message || 'Error creating payment intent', error);
+		}
+	}
+
+	async confirmSeatPurchase(
+		partner_id: string,
+		payment_intent_id: string,
+		batch_name: string
+	): Promise<any> {
+		try {
+			// Get partner profile
+			const partner_profile = await this.partnerRepository.getFullPartnerDetails(partner_id);
+			if (!partner_profile.payments || !partner_profile.payments.length) {
+				throw new ApiError(400, 'No payment profile found');
+			}
+
+			const stripe_customer_id = partner_profile.payments[0].stripe_customer_id;
+
+			// Retrieve the payment intent to verify payment
+			const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+			const paymentIntent = await stripe.paymentIntents.retrieve(payment_intent_id);
+
+			// Verify payment succeeded
+			if (paymentIntent.status !== 'succeeded') {
+				throw new ApiError(400, 'Payment not successful');
+			}
+
+			// Verify customer matches
+			if (paymentIntent.customer !== stripe_customer_id) {
+				throw new ApiError(403, 'Payment intent does not belong to this partner');
+			}
+
+			// Extract metadata
+			const metadata = paymentIntent.metadata;
+			const seat_count = parseInt(metadata.seat_count);
+			const sessions_per_day = parseInt(metadata.sessions_per_day) as 3 | 5 | 10 | -1;
+			const months = parseInt(metadata.months);
+
+			// Create or get batch
+			let batch;
+			try {
+				batch = await this.candidatesRepository.createBatch(partner_id, batch_name.trim());
+				this.logger.info(`Created new batch: ${batch._id} for seat purchase`);
+			} catch (error: any) {
+				if (error.code === 11000) {
+					const batches = await this.candidatesRepository.getAllBatchesByPartnerId(partner_id);
+					batch = batches.find(b => b.batch_name === batch_name.trim());
+					if (!batch) {
+						throw new ApiError(400, 'Batch name already exists but could not be retrieved');
+					}
+					this.logger.info(`Using existing batch: ${batch._id} for seat purchase`);
+				} else {
+					throw error;
+				}
+			}
+
+			const batch_id = batch._id.toString();
+
+			// Check if seat already exists for this batch
+			const existingSeat = await this.candidatesRepository.getSeatByBatch(partner_id, batch_id);
+			if (existingSeat) {
+				throw new ApiError(400, 'A seat subscription already exists for this batch');
+			}
+
+			// Create seat record
+			const start_date = new Date();
+			const end_date = new Date();
+			end_date.setDate(end_date.getDate() + (months * 30));
+
+			const seat = await this.candidatesRepository.createSeat(
+				partner_id,
+				batch_id,
+				seat_count,
+				sessions_per_day,
+				start_date,
+				end_date,
+				30
+			);
+
+			// Record payment transaction
+			const sessionLabel = sessions_per_day === -1 ? 'unlimited' : sessions_per_day;
+			const payment_data = {
+				user_id: partner_id,
+				transaction_type: 'debit' as const,
+				amount: paymentIntent.amount / 100, // Convert from cents
+				currency: 'usd',
+				payment_method: paymentIntent.payment_method as string,
+				payment_processor: 'stripe',
+				payment_processor_payment_id: paymentIntent.id,
+				payment_status: 'successful',
+				description: `Purchase of ${seat_count} seats (${sessionLabel} sessions/day) for batch "${batch_name}" for ${months} month(s)`,
+				transaction_details: {
+					seat_count,
+					sessions_per_day,
+					months,
+					batch_id,
+					batch_name,
+					payment_intent_id,
+					charge_details: paymentIntent
+				}
+			};
+
+			const payment_record = await this.paymentsRepository.RecordPaymentTransaction(payment_data);
+
+			return {
+				seat,
+				batch: {
+					batch_id: batch._id,
+					batch_name: batch.batch_name
+				},
+				payment: payment_record
+			};
+		} catch (error: any) {
+			this.logger.error(`Error confirming seat purchase: ${error}`);
+			throw new ApiError(400, error.message || 'Error confirming seat purchase', error);
 		}
 	}
 
@@ -498,8 +718,8 @@ export class PaymentsService {
 				throw new ApiError(400, 'A seat subscription already exists for this batch. Please use a different batch name or sunset the existing batch first.');
 			}
 
-			// Price calculation: reuse calculatePricing (per candidate == per seat here)
-			const pricing = await this.calculatePricing(seat_count, months);
+			// Price calculation: use new seat pricing logic
+			const pricing = await this.calculateSeatPricing(seat_count, sessions_per_day, months);
 
 			// get partner stripe customer
 			const partner_profile = await this.partnerRepository.getFullPartnerDetails(partner_id);
@@ -616,6 +836,77 @@ export class PaymentsService {
 		} catch (error) {
 			this.logger.error(`Error calculating pricing: ${error}`);
 			throw new ApiError(400, 'Error calculating pricing', error);
+		}
+	}
+
+	async calculateSeatPricing(seat_count: number, sessions_per_day: number, months: number): Promise<{
+		per_candidate: number;
+		total: number;
+		breakdown: {
+			seat_count: number;
+			sessions_per_day: number;
+			months: number;
+			monthly_sessions: number;
+			cost_per_month: number;
+			base_price_per_candidate_per_month: number;
+			volume_discount: number;
+			final_price_per_candidate_per_month: number;
+			final_price_per_candidate_total: number;
+		}
+	}> {
+		try {
+			// Calculate sessions per day (unlimited = 15)
+			const actualSessionsPerDay = sessions_per_day === -1 ? 15 : sessions_per_day;
+			
+			// Calculate monthly sessions (30 days)
+			const monthlySessions = actualSessionsPerDay * 30;
+			
+			// Cost calculation: sessions * $1.4
+			const cost = monthlySessions * 1.4;
+			
+			// Base price with 45% markup
+			const basePricePerMonth = cost * 1.45;
+			
+			// Determine volume discount based on seat count
+			let discountPercentage = 0;
+			let multiplier = 1;
+			
+			if (seat_count >= 100) {
+				discountPercentage = 20;
+				multiplier = 0.8; // 20% discount
+			} else if (seat_count >= 50) {
+				discountPercentage = 15;
+				multiplier = 0.85; // 15% discount
+			} else if (seat_count >= 10) {
+				discountPercentage = 10;
+				multiplier = 0.9; // 10% discount
+			}
+			
+			// Calculate final price per candidate per month
+			const perCandidatePerMonth = Math.round(basePricePerMonth * multiplier);
+			
+			// Calculate total price for the entire duration
+			const perCandidateTotal = perCandidatePerMonth * months;
+			const total = perCandidateTotal * seat_count;
+			
+			return {
+				per_candidate: perCandidateTotal,
+				total,
+				breakdown: {
+					seat_count,
+					sessions_per_day: actualSessionsPerDay,
+					months,
+					monthly_sessions: monthlySessions,
+					cost_per_month: cost,
+					base_price_per_candidate_per_month: basePricePerMonth,
+					volume_discount: discountPercentage,
+					final_price_per_candidate_per_month: perCandidatePerMonth,
+					final_price_per_candidate_total: perCandidateTotal
+				}
+			};
+		} catch (error) {
+			this.logger.error(`Error calculating seat pricing: ${error}`);
+			throw new ApiError(400, 'Error calculating seat pricing', error);
 		}
 	}
 

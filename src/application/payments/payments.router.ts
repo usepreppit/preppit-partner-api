@@ -22,12 +22,17 @@ export default (app: Router) => {
     
     // New partner payment endpoints
     route.get('/payment-methods', paymentsController.GetPaymentMethods.bind(paymentsController));
+    route.post('/payment-methods/save', paymentsController.SaveCard.bind(paymentsController));
+    route.post('/payment-methods/default', paymentsController.SetDefaultPaymentMethod.bind(paymentsController));
     route.get('/pricing', paymentsController.GetPricing.bind(paymentsController));
+    route.get('/seats/pricing', paymentsController.GetSeatPricing.bind(paymentsController));
+    route.post('/seats/payment-intent', paymentsController.CreatePaymentIntent.bind(paymentsController));
+    route.post('/seats/confirm-purchase', paymentsController.ConfirmSeatPurchase.bind(paymentsController));
     route.post('/process', paymentsController.ProcessPayment.bind(paymentsController));
     route.post('/seats/purchase', paymentsController.PurchaseSeats.bind(paymentsController));
     
-    // route.get('/stripe/get_client_secret', transactionsController.GetClientSecret.bind(transactionsController));
-    // route.post('/stripe/save_card', paymentsController.SaveCard.bind(paymentsController));
+    // Legacy Stripe endpoints (backward compatibility)
+    route.post('/stripe/save_card', paymentsController.SaveCard.bind(paymentsController));
     // route.post('/purchaseMinutes', paymentsController.PurchasePlan.bind(paymentsController));
     
     // route.post('/fund_wallet', transactionsController.FundWallet.bind(transactionsController));

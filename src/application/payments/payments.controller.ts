@@ -153,6 +153,96 @@ export class PaymentsController {
         }
     }
 
+    async SetDefaultPaymentMethod(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const partner_id = req.curr_user?._id?.toString() as string;
+            const { payment_method_id } = req.body;
+
+            if (!payment_method_id) {
+                ApiResponse.badRequest('payment_method_id is required').send(res);
+                return;
+            }
+
+            try {
+                const result = await this.paymentService.setDefaultPaymentMethod(partner_id, payment_method_id);
+                ApiResponse.ok(result, 'Default payment method updated successfully').send(res);
+            } catch (error) {
+                this.logger.error('Error setting default payment method', error);
+                next(error);
+            }
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async CreatePaymentIntent(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const partner_id = req.curr_user?._id?.toString() as string;
+            const { batch_name, seat_count, sessions_per_day, months } = req.body;
+
+            if (!batch_name || !seat_count || !sessions_per_day || !months) {
+                ApiResponse.badRequest('batch_name, seat_count, sessions_per_day, and months are required').send(res);
+                return;
+            }
+
+            // Validate sessions_per_day
+            const validSessions = [3, 5, 10, -1];
+            if (!validSessions.includes(sessions_per_day)) {
+                ApiResponse.badRequest('sessions_per_day must be 3, 5, 10, or -1 (unlimited)').send(res);
+                return;
+            }
+
+            // Validate months
+            const validMonths = [1, 3, 6, 12];
+            if (!validMonths.includes(months)) {
+                ApiResponse.badRequest('months must be 1, 3, 6, or 12').send(res);
+                return;
+            }
+
+            try {
+                const result = await this.paymentService.createPaymentIntent(
+                    partner_id,
+                    batch_name,
+                    seat_count,
+                    sessions_per_day,
+                    months
+                );
+                ApiResponse.created(result, 'Payment intent created successfully').send(res);
+            } catch (error) {
+                this.logger.error('Error creating payment intent', error);
+                next(error);
+            }
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async ConfirmSeatPurchase(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const partner_id = req.curr_user?._id?.toString() as string;
+            const { payment_intent_id, batch_name } = req.body;
+
+            if (!payment_intent_id || !batch_name) {
+                ApiResponse.badRequest('payment_intent_id and batch_name are required').send(res);
+                return;
+            }
+
+            try {
+                const result = await this.paymentService.confirmSeatPurchase(
+                    partner_id,
+                    payment_intent_id,
+                    batch_name
+                );
+                ApiResponse.created(result, 'Seat purchase confirmed successfully').send(res);
+            } catch (error) {
+                this.logger.error('Error confirming seat purchase', error);
+                next(error);
+            }
+        } catch (error) {
+            next(error);
+        }
+    }
+
     async GetPricing(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const candidate_count = parseInt(req.query.candidate_count as string);
@@ -189,6 +279,43 @@ export class PaymentsController {
                 ApiResponse.ok(response, 'Pricing calculated successfully').send(res);
             } catch (error) {
                 this.logger.error('Error calculating pricing', error);
+                next(error);
+            }
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async GetSeatPricing(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const seat_count = parseInt(req.query.seat_count as string);
+            const sessions_per_day = parseInt(req.query.sessions_per_day as string);
+            const months = parseInt(req.query.months as string);
+            
+            if (!seat_count || !sessions_per_day || !months) {
+                ApiResponse.badRequest('seat_count, sessions_per_day, and months are required query parameters').send(res);
+                return;
+            }
+
+            // Validate sessions_per_day
+            const validSessions = [3, 5, 10, -1];
+            if (!validSessions.includes(sessions_per_day)) {
+                ApiResponse.badRequest('sessions_per_day must be 3, 5, 10, or -1 (unlimited)').send(res);
+                return;
+            }
+
+            // Validate months
+            const validMonths = [1, 3, 6, 12];
+            if (!validMonths.includes(months)) {
+                ApiResponse.badRequest('months must be 1, 3, 6, or 12').send(res);
+                return;
+            }
+
+            try {
+                const pricing = await this.paymentService.calculateSeatPricing(seat_count, sessions_per_day, months);
+                ApiResponse.ok(pricing, 'Seat pricing calculated successfully').send(res);
+            } catch (error) {
+                this.logger.error('Error calculating seat pricing', error);
                 next(error);
             }
         } catch (error) {
