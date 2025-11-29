@@ -469,6 +469,7 @@ export class CandidatesRepository {
         partner_id: string,
         batch_id: string,
         seat_count: number,
+        sessions_per_day: 3 | 5 | 10 | -1,
         start_date: Date,
         end_date: Date,
         auto_renew_interval_days: number = 30
@@ -478,6 +479,7 @@ export class CandidatesRepository {
             batch_id: new mongoose.Types.ObjectId(batch_id),
             seat_count,
             seats_assigned: 0,
+            sessions_per_day,
             start_date,
             end_date,
             auto_renew_interval_days,

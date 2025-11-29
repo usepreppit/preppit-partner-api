@@ -239,15 +239,37 @@ export class PaymentsController {
     async PurchaseSeats(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const partner_id = req.curr_user?._id?.toString() as string;
-            const { seat_count, months, batch_id, payment_method_id, auto_renew } = req.body;
+            const { batch_name, seat_count, sessions_per_day, months, payment_method_id, auto_renew } = req.body;
 
-            if (!seat_count || !months || !batch_id || !payment_method_id) {
-                ApiResponse.badRequest('seat_count, months, batch_id and payment_method_id are required').send(res);
+            if (!batch_name || !seat_count || !sessions_per_day || !months || !payment_method_id) {
+                ApiResponse.badRequest('batch_name, seat_count, sessions_per_day, months, and payment_method_id are required').send(res);
+                return;
+            }
+
+            // Validate sessions_per_day value
+            const validSessions = [3, 5, 10, -1];
+            if (!validSessions.includes(sessions_per_day)) {
+                ApiResponse.badRequest('sessions_per_day must be 3, 5, 10, or -1 (unlimited)').send(res);
+                return;
+            }
+
+            // Validate months value
+            const validMonths = [1, 3, 6, 12];
+            if (!validMonths.includes(months)) {
+                ApiResponse.badRequest('months must be 1, 3, 6, or 12').send(res);
                 return;
             }
 
             try {
-                const result = await this.paymentService.purchaseSeats(partner_id, seat_count, months, batch_id, payment_method_id, auto_renew || false);
+                const result = await this.paymentService.purchaseSeats(
+                    partner_id, 
+                    seat_count, 
+                    sessions_per_day, 
+                    months, 
+                    batch_name, 
+                    payment_method_id, 
+                    auto_renew || false
+                );
                 ApiResponse.created(result, 'Seats purchased successfully').send(res);
             } catch (error) {
                 this.logger.error('Error purchasing seats', error);

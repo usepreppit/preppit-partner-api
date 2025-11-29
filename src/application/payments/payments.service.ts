@@ -438,19 +438,64 @@ export class PaymentsService {
 
 	/**
 	 * Purchase seats for a batch. Charges the partner immediately and creates a Seat record.
+	 * Creates a new batch if batch_name is provided, or uses existing batch if batch_id is provided.
 	 * Minimum seats per purchase enforced by caller (frontend/business logic) - backend will validate min 10.
 	 */
 	async purchaseSeats(
 		partner_id: string,
 		seat_count: number,
+		sessions_per_day: 3 | 5 | 10 | -1,
 		months: number,
-		batch_id: string,
+		batch_name: string,
 		payment_method_id: string,
 		auto_renew: boolean = false
 	): Promise<any> {
 		try {
 			if (seat_count < 10) {
 				throw new ApiError(400, 'Minimum seat purchase is 10');
+			}
+
+			// Validate sessions_per_day
+			const validSessions = [3, 5, 10, -1];
+			if (!validSessions.includes(sessions_per_day)) {
+				throw new ApiError(400, 'Invalid sessions_per_day value. Must be 3, 5, 10, or -1 (unlimited)');
+			}
+
+			// Validate months
+			const validMonths = [1, 3, 6, 12];
+			if (!validMonths.includes(months)) {
+				throw new ApiError(400, 'Invalid months value. Must be 1, 3, 6, or 12');
+			}
+
+			if (!batch_name || batch_name.trim() === '') {
+				throw new ApiError(400, 'Batch name is required');
+			}
+
+			// Create or get batch
+			let batch;
+			try {
+				batch = await this.candidatesRepository.createBatch(partner_id, batch_name.trim());
+				this.logger.info(`Created new batch: ${batch._id} for seat purchase`);
+			} catch (error: any) {
+				// If batch already exists (duplicate key error), fetch it
+				if (error.code === 11000) {
+					const batches = await this.candidatesRepository.getAllBatchesByPartnerId(partner_id);
+					batch = batches.find(b => b.batch_name === batch_name.trim());
+					if (!batch) {
+						throw new ApiError(400, 'Batch name already exists but could not be retrieved');
+					}
+					this.logger.info(`Using existing batch: ${batch._id} for seat purchase`);
+				} else {
+					throw error;
+				}
+			}
+
+			const batch_id = batch._id.toString();
+
+			// Check if seat already exists for this batch
+			const existingSeat = await this.candidatesRepository.getSeatByBatch(partner_id, batch_id);
+			if (existingSeat) {
+				throw new ApiError(400, 'A seat subscription already exists for this batch. Please use a different batch name or sunset the existing batch first.');
 			}
 
 			// Price calculation: reuse calculatePricing (per candidate == per seat here)
@@ -474,9 +519,10 @@ export class PaymentsService {
 			const end_date = new Date();
 			end_date.setDate(end_date.getDate() + (months * 30));
 
-			const seat = await this.candidatesRepository.createSeat(partner_id, batch_id, seat_count, start_date, end_date, 30);
+			const seat = await this.candidatesRepository.createSeat(partner_id, batch_id, seat_count, sessions_per_day, start_date, end_date, 30);
 
 			// record payment
+			const sessionLabel = sessions_per_day === -1 ? 'unlimited' : sessions_per_day;
 			const payment_data = {
 				user_id: partner_id,
 				transaction_type: 'debit' as const,
@@ -486,11 +532,13 @@ export class PaymentsService {
 				payment_processor: 'stripe',
 				payment_processor_payment_id: charge.id,
 				payment_status: 'successful',
-				description: `Purchase of ${seat_count} seats for batch ${batch_id} for ${months} month(s)`,
+				description: `Purchase of ${seat_count} seats (${sessionLabel} sessions/day) for batch "${batch_name}" for ${months} month(s)`,
 				transaction_details: {
 					seat_count,
+					sessions_per_day,
 					months,
 					batch_id,
+					batch_name,
 					pricing: pricing.breakdown,
 					charge_details: charge
 				}
@@ -502,7 +550,14 @@ export class PaymentsService {
 				await this.partnerRepository.updateAutoRenewPreference(partner_id, auto_renew);
 			}
 
-			return { seat, payment: payment_record };
+			return { 
+				seat, 
+				batch: {
+					batch_id: batch._id,
+					batch_name: batch.batch_name
+				},
+				payment: payment_record 
+			};
 		} catch (error: any) {
 			this.logger.error(`Error purchasing seats: ${error}`);
 			throw new ApiError(400, error.message || 'Error purchasing seats', error);

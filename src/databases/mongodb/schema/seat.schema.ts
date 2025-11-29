@@ -7,6 +7,7 @@ const SeatSchema = new Schema<ISeat>(
         batch_id: { type: Schema.Types.ObjectId, ref: 'CandidateBatch', required: true, index: true },
         seat_count: { type: Number, required: true },
         seats_assigned: { type: Number, default: 0 },
+        sessions_per_day: { type: Number, required: true, enum: [3, 5, 10, -1] }, // -1 = unlimited
         start_date: { type: Date, required: true },
         end_date: { type: Date, required: true },
         auto_renew_interval_days: { type: Number, default: 30 },
