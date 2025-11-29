@@ -32,6 +32,12 @@ export default (app: Router) => {
         '/batches/:batch_id/unpaid',
         candidatesController.GetUnpaidCandidatesInBatch.bind(candidatesController)
     );
+
+    // Sunset (deactivate) a batch's seat subscription
+    route.post(
+        '/batches/:batch_id/sunset',
+        candidatesController.SunsetBatch.bind(candidatesController)
+    );
     
     // Create a new candidate batch
     route.post(

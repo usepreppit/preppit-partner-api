@@ -15,9 +15,9 @@ import { IPayments } from './models/payments.models';
 export class PaymentsService {
     constructor(
 		@inject(Logger) private readonly logger: Logger,
-		@inject(PaymentsRepository) private readonly paymentsRepository: PaymentsRepository,
-		@inject(PartnerRepository) private readonly partnerRepository: PartnerRepository,
-		@inject(CandidatesRepository) private readonly candidatesRepository: CandidatesRepository,
+	@inject(PaymentsRepository) private readonly paymentsRepository: PaymentsRepository,
+	@inject(PartnerRepository) private readonly partnerRepository: PartnerRepository,
+	@inject(CandidatesRepository) private readonly candidatesRepository: CandidatesRepository,
 
     ) {}
 
@@ -433,6 +433,79 @@ export class PaymentsService {
 		} catch (error) {
 			this.logger.error(`Error getting unpaid count: ${error}`);
 			throw new ApiError(400, 'Error getting unpaid candidates count', error);
+		}
+	}
+
+	/**
+	 * Purchase seats for a batch. Charges the partner immediately and creates a Seat record.
+	 * Minimum seats per purchase enforced by caller (frontend/business logic) - backend will validate min 10.
+	 */
+	async purchaseSeats(
+		partner_id: string,
+		seat_count: number,
+		months: number,
+		batch_id: string,
+		payment_method_id: string,
+		auto_renew: boolean = false
+	): Promise<any> {
+		try {
+			if (seat_count < 10) {
+				throw new ApiError(400, 'Minimum seat purchase is 10');
+			}
+
+			// Price calculation: reuse calculatePricing (per candidate == per seat here)
+			const pricing = await this.calculatePricing(seat_count, months);
+
+			// get partner stripe customer
+			const partner_profile = await this.partnerRepository.getFullPartnerDetails(partner_id);
+			if (!partner_profile.payments || !partner_profile.payments.length) {
+				throw new ApiError(400, 'No payment profile found. Please add a payment method first.');
+			}
+			const stripe_customer_id = partner_profile.payments[0].stripe_customer_id;
+
+			// charge partner
+			const charge = await DebitCustomerCard(stripe_customer_id, payment_method_id, pricing.total);
+			if (!charge || charge.status !== 'succeeded') {
+				throw new ApiError(400, 'Payment failed');
+			}
+
+			// create seat record
+			const start_date = new Date();
+			const end_date = new Date();
+			end_date.setDate(end_date.getDate() + (months * 30));
+
+			const seat = await this.candidatesRepository.createSeat(partner_id, batch_id, seat_count, start_date, end_date, 30);
+
+			// record payment
+			const payment_data = {
+				user_id: partner_id,
+				transaction_type: 'debit' as const,
+				amount: pricing.total,
+				currency: 'usd',
+				payment_method: payment_method_id,
+				payment_processor: 'stripe',
+				payment_processor_payment_id: charge.id,
+				payment_status: 'successful',
+				description: `Purchase of ${seat_count} seats for batch ${batch_id} for ${months} month(s)`,
+				transaction_details: {
+					seat_count,
+					months,
+					batch_id,
+					pricing: pricing.breakdown,
+					charge_details: charge
+				}
+			};
+
+			const payment_record = await this.paymentsRepository.RecordPaymentTransaction(payment_data);
+
+			if (auto_renew !== partner_profile.auto_renew_subscription) {
+				await this.partnerRepository.updateAutoRenewPreference(partner_id, auto_renew);
+			}
+
+			return { seat, payment: payment_record };
+		} catch (error: any) {
+			this.logger.error(`Error purchasing seats: ${error}`);
+			throw new ApiError(400, error.message || 'Error purchasing seats', error);
 		}
 	}
 

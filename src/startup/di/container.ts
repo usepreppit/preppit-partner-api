@@ -55,6 +55,7 @@ import { SubscriptionsModel } from '../../application/subscriptions/models/subsc
 import { UserActivityLogModel } from '../../application/activity/models/activity_logs.model';
 import { CandidateBatchModel } from '../../databases/mongodb/schema/candidate_batch.schema';
 import PartnerCandidateModel from '../../databases/mongodb/schema/partner_candidate.schema';
+import { SeatModel } from '../../databases/mongodb/schema/seat.schema';
 
 
 // Repositories
@@ -133,6 +134,7 @@ container.bind<typeof SubscriptionsModel>('SubscriptionsModel').toConstantValue(
 container.bind<typeof UserActivityLogModel>('UserActivityLogModel').toConstantValue(UserActivityLogModel);
 container.bind<typeof CandidateBatchModel>('CandidateBatchModel').toConstantValue(CandidateBatchModel);
 container.bind<typeof PartnerCandidateModel>('PartnerCandidateModel').toConstantValue(PartnerCandidateModel);
+container.bind<typeof SeatModel>('SeatModel').toConstantValue(SeatModel);
 
 
 // Application Services

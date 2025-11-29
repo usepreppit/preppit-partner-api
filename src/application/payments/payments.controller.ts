@@ -236,4 +236,26 @@ export class PaymentsController {
         }
     }
 
+    async PurchaseSeats(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const partner_id = req.curr_user?._id?.toString() as string;
+            const { seat_count, months, batch_id, payment_method_id, auto_renew } = req.body;
+
+            if (!seat_count || !months || !batch_id || !payment_method_id) {
+                ApiResponse.badRequest('seat_count, months, batch_id and payment_method_id are required').send(res);
+                return;
+            }
+
+            try {
+                const result = await this.paymentService.purchaseSeats(partner_id, seat_count, months, batch_id, payment_method_id, auto_renew || false);
+                ApiResponse.created(result, 'Seats purchased successfully').send(res);
+            } catch (error) {
+                this.logger.error('Error purchasing seats', error);
+                next(error);
+            }
+        } catch (error) {
+            next(error);
+        }
+    }
+
 }

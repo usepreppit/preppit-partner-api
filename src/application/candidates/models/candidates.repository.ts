@@ -12,6 +12,7 @@ export class CandidatesRepository {
         @inject('UserModel') private userModel: Model<IUser>,
         @inject('CandidateBatchModel') private candidateBatchModel: Model<ICandidateBatch>,
         @inject('PartnerCandidateModel') private partnerCandidateModel: Model<IPartnerCandidate>,
+        @inject('SeatModel') private seatModel: Model<any>,
     ) {}
 
     async createBatch(partner_id: string, batch_name: string): Promise<ICandidateBatch> {
@@ -446,5 +447,46 @@ export class CandidatesRepository {
             batch_id: new mongoose.Types.ObjectId(batch_id),
             is_paid_for: false
         }).lean();
+    }
+
+    async getSeatByBatch(partner_id: string, batch_id: string): Promise<any | null> {
+        return await this.seatModel.findOne({
+            partner_id: new mongoose.Types.ObjectId(partner_id),
+            batch_id: new mongoose.Types.ObjectId(batch_id),
+            is_active: true
+        }).lean();
+    }
+
+    async deactivateSeatByBatch(partner_id: string, batch_id: string): Promise<any | null> {
+        return await this.seatModel.findOneAndUpdate(
+            { partner_id: new mongoose.Types.ObjectId(partner_id), batch_id: new mongoose.Types.ObjectId(batch_id), is_active: true },
+            { is_active: false },
+            { new: true }
+        ).lean();
+    }
+
+    async createSeat(
+        partner_id: string,
+        batch_id: string,
+        seat_count: number,
+        start_date: Date,
+        end_date: Date,
+        auto_renew_interval_days: number = 30
+    ): Promise<any> {
+        const seat = await this.seatModel.create({
+            partner_id: new mongoose.Types.ObjectId(partner_id),
+            batch_id: new mongoose.Types.ObjectId(batch_id),
+            seat_count,
+            seats_assigned: 0,
+            start_date,
+            end_date,
+            auto_renew_interval_days,
+            is_active: true
+        });
+        return seat;
+    }
+
+    async incrementSeatsAssigned(seat_id: string, incrementBy: number = 1): Promise<any> {
+        return await this.seatModel.findByIdAndUpdate(seat_id, { $inc: { seats_assigned: incrementBy } }, { new: true }).lean();
     }
 }

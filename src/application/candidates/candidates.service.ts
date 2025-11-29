@@ -56,13 +56,43 @@ export class CandidatesService {
                 throw new ValidationError('Candidate with this email already exists in this batch');
             }
 
-            const result = await this.candidatesRepository.createCandidate(
-                partner_id,
-                data.batch_id,
-                data.firstname,
-                data.lastname,
-                data.email
-            );
+            // Seat check: if a seat subscription exists for this batch, ensure capacity
+            const seat = await this.candidatesRepository.getSeatByBatch(partner_id, data.batch_id);
+            if (seat && seat.is_active) {
+                if ((seat.seats_assigned || 0) >= (seat.seat_count || 0)) {
+                    // No seats available
+                    throw new ApiError(402, 'Seat capacity reached for this batch');
+                }
+                // Reserve a seat (increment) before creating candidate to avoid race conditions.
+                try {
+                    await this.candidatesRepository.incrementSeatsAssigned(seat._id.toString(), 1);
+                } catch (incErr) {
+                    this.logger.error('Failed to reserve seat before creating candidate', incErr);
+                    throw new ApiError(500, 'Failed to reserve seat');
+                }
+                // If candidate creation fails afterwards, we'll decrement in the catch below
+            }
+
+            let result: { user: IUser; partnerCandidate: any };
+            try {
+                result = await this.candidatesRepository.createCandidate(
+                    partner_id,
+                    data.batch_id,
+                    data.firstname,
+                    data.lastname,
+                    data.email
+                );
+            } catch (createErr) {
+                // If we reserved a seat earlier, rollback the reserved seat
+                if (seat && seat.is_active) {
+                    try {
+                        await this.candidatesRepository.incrementSeatsAssigned(seat._id.toString(), -1);
+                    } catch (rollbackErr) {
+                        this.logger.error('Failed to rollback seat reservation after candidate create failure', rollbackErr);
+                    }
+                }
+                throw createErr;
+            }
 
             // Mark "add candidates" step as complete on dashboard (only on first candidate)
             const partner = await this.partnerRepository.findById(partner_id);
@@ -533,6 +563,22 @@ export class CandidatesService {
             }
             this.logger.error('Error getting unpaid candidates:', error);
             throw new ApiError(500, 'Failed to get unpaid candidates');
+        }
+    }
+
+    async deactivateSeat(partner_id: string, batch_id: string): Promise<any> {
+        try {
+            const result = await this.candidatesRepository.deactivateSeatByBatch(partner_id, batch_id);
+            if (!result) {
+                throw new ValidationError('No active seat found for this batch');
+            }
+            return result;
+        } catch (error: any) {
+            if (error instanceof ValidationError || error instanceof ApiError) {
+                throw error;
+            }
+            this.logger.error('Error deactivating seat:', error);
+            throw new ApiError(500, 'Failed to deactivate seat');
         }
     }
 }

@@ -24,6 +24,7 @@ export default (app: Router) => {
     route.get('/payment-methods', paymentsController.GetPaymentMethods.bind(paymentsController));
     route.get('/pricing', paymentsController.GetPricing.bind(paymentsController));
     route.post('/process', paymentsController.ProcessPayment.bind(paymentsController));
+    route.post('/seats/purchase', paymentsController.PurchaseSeats.bind(paymentsController));
     
     // route.get('/stripe/get_client_secret', transactionsController.GetClientSecret.bind(transactionsController));
     // route.post('/stripe/save_card', paymentsController.SaveCard.bind(paymentsController));

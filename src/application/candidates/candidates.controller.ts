@@ -193,4 +193,26 @@ export class CandidatesController {
             next(error);
         }
     }
+
+    async SunsetBatch(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const partner_id = req.curr_user?._id?.toString() as string;
+            const { batch_id } = req.params;
+
+            if (!batch_id) {
+                ApiResponse.badRequest('batch_id is required').send(res);
+                return;
+            }
+
+            try {
+                const result = await this.candidatesService.deactivateSeat(partner_id, batch_id);
+                ApiResponse.ok(result, 'Batch sunset successfully').send(res);
+            } catch (error) {
+                next(error);
+            }
+        } catch (error) {
+            this.logger.error('Error in SunsetBatch:', error);
+            next(error);
+        }
+    }
 }
