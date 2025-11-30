@@ -4,8 +4,10 @@ import { ApiError, ValidationError } from '../../helpers/error.helper';
 import { Request } from 'express';
 import { AdminRepository } from './../users/models/admin.repository';
 import { PartnerRepository } from './../users/models/partner.repository';
+import { ExamsRepository } from '../exams/models/exams.repository';
 import { comparePasswords, hashPassword } from '../../helpers/password.helper';
 import { uploadToCFBucket } from '../../helpers/upload_to_s3.helper';
+import mongoose from 'mongoose';
 
 
 @injectable()
@@ -14,6 +16,7 @@ export class ProfileService {
 		@inject(Logger) private readonly logger: Logger,
         @inject(AdminRepository) private readonly adminRepository: AdminRepository,
         @inject(PartnerRepository) private readonly partnerRepository: PartnerRepository,
+        @inject(ExamsRepository) private readonly examsRepository: ExamsRepository,
     ) {}
 
 	// Helper method to get user and account type
@@ -286,6 +289,36 @@ async CompleteOnboarding(user_id: string, onboardingData: any, account_type?: 'a
 			throw new ValidationError(
 				`Cannot complete onboarding. Missing required fields: ${missingFields.join(', ')}`
 			);
+		}
+
+		// Validate exam_types - ensure all exam IDs exist in the database
+		if (onboardingData.exam_types && Array.isArray(onboardingData.exam_types)) {
+			// Validate that exam_types is not empty
+			if (onboardingData.exam_types.length === 0) {
+				throw new ValidationError('At least one exam must be selected');
+			}
+
+			// Convert to ObjectIds and validate format
+			const examIds = onboardingData.exam_types.map((id: string) => {
+				if (!mongoose.Types.ObjectId.isValid(id)) {
+					throw new ValidationError(`Invalid exam ID format: ${id}`);
+				}
+				return new mongoose.Types.ObjectId(id);
+			});
+			
+			// Query database to verify exams exist
+			const exams = await this.examsRepository.getExams({ _id: { $in: examIds } });
+			
+			if (exams.length !== examIds.length) {
+				const foundIds = exams.map((exam: any) => exam._id.toString());
+				const missingIds = onboardingData.exam_types.filter((id: string) => !foundIds.includes(id));
+				throw new ValidationError(
+					`Invalid exam IDs: ${missingIds.join(', ')}. Please select valid exams from the available list.`
+				);
+			}
+
+			// Convert back to ObjectIds for storage
+			onboardingData.exam_types = examIds;
 		}
 
 		// Update partner with onboarding data and mark as complete

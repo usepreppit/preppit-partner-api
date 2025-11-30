@@ -1,5 +1,6 @@
 import { validator, sendError } from '../helpers/validator.helper';
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 
 interface IntValidationError {
     errors: Record<string, string[]>;
@@ -24,37 +25,29 @@ export const validate_complete_onboarding = (req: Request, res: Response, next: 
 			return;
 		}
 		
-		// Additional validation and normalization for exam_types array values
-		const validExamTypes = ['PEBC_OSCE', 'IELTS', 'PLAB', 'USMLE', 'NCLEX'];
+		// Validate exam_types array contains valid ObjectIds
 		const examTypes = req.body.exam_types;
 		
 		if (examTypes && Array.isArray(examTypes)) {
 			if (examTypes.length === 0) {
 				sendError(res, {
 					errors: {
-						exam_types: ['At least one exam type must be selected']
+						exam_types: ['At least one exam must be selected']
 					}
 				});
 				return;
 			}
 			
-			// Normalize exam types (convert pebc-osce to PEBC_OSCE, etc.)
-			const normalizedExams = examTypes.map((exam: string) => 
-				exam.toUpperCase().replace(/-/g, '_')
-			);
-			
-			const invalidExams = normalizedExams.filter((exam: string) => !validExamTypes.includes(exam));
-			if (invalidExams.length > 0) {
+			// Validate each exam ID is a valid ObjectId
+			const invalidIds = examTypes.filter((id: string) => !mongoose.Types.ObjectId.isValid(id));
+			if (invalidIds.length > 0) {
 				sendError(res, {
 					errors: {
-						exam_types: [`Invalid exam type(s): ${invalidExams.join(', ')}. Valid types are: PEBC_OSCE (or pebc-osce), IELTS (or ielts), PLAB (or plab), USMLE (or usmle), NCLEX (or nclex)`]
+						exam_types: [`Invalid exam ID format: ${invalidIds.join(', ')}. Please select exams from the available list.`]
 					}
 				});
 				return;
 			}
-			
-			// Update request body with normalized values
-			req.body.exam_types = normalizedExams;
 		}
 		
 		next();
@@ -81,16 +74,15 @@ export const validate_save_onboarding_progress = (req: Request, res: Response, n
 			return;
 		}
 		
-		// Validate exam_types if provided
-		const validExamTypes = ['PEBC_OSCE', 'IELTS', 'PLAB', 'USMLE', 'NCLEX'];
+		// Validate exam_types ObjectIds if provided
 		const examTypes = req.body.exam_types;
 		
 		if (examTypes && Array.isArray(examTypes) && examTypes.length > 0) {
-			const invalidExams = examTypes.filter((exam: string) => !validExamTypes.includes(exam));
-			if (invalidExams.length > 0) {
+			const invalidIds = examTypes.filter((id: string) => !mongoose.Types.ObjectId.isValid(id));
+			if (invalidIds.length > 0) {
 				sendError(res, {
 					errors: {
-						exam_types: [`Invalid exam type(s): ${invalidExams.join(', ')}. Valid types are: ${validExamTypes.join(', ')}`]
+						exam_types: [`Invalid exam ID format: ${invalidIds.join(', ')}. Please select exams from the available list.`]
 					}
 				});
 				return;

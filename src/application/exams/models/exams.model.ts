@@ -2,6 +2,7 @@ import mongoose, { Document, Types } from 'mongoose';
 
 export enum ExamStatus {
     DRAFT = "draft",
+    PENDING = "pending",
     PUBLISHED = "published",
     ARCHIVED = "archived",
 }

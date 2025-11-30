@@ -99,8 +99,8 @@ const schema = new Schema<IPartner>(
       enum: ['USD', 'CAD', 'NGN', 'GBP', 'EUR'],
     },
     exam_types: [{
-      type: String,
-      enum: ['PEBC_OSCE', 'IELTS', 'PLAB', 'USMLE', 'NCLEX'],
+      type: Schema.Types.ObjectId,
+      ref: 'Exam',
     }],
     // Next Steps tracking
     has_added_candidates: {

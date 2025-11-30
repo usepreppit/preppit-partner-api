@@ -44,4 +44,35 @@ export class UtilsController {
             next(error);
         }
     }
+
+    async GetExamTypes(_: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            this.logger.info('Getting available exams for partner onboarding');
+            // Fetch all published exams from the database
+            const exams = await this.examService.GetExams({ status: 'published' });
+            
+            // Format the exams for partner selection
+            const availableExams = exams.map((exam: any) => ({
+                exam_id: exam._id,
+                title: exam.title,
+                description: exam.description,
+                type: exam.type,
+                sim_name: exam.sim_name,
+                slug: exam.slug,
+                status: exam.status,
+                duration_minutes: exam.durationMinutes,
+                tags: exam.tags || [],
+                scenario_count: exam.scenarioCount || 0,
+                students_joined: exam.studentsJoined || 0
+            }));
+            
+            ApiResponse.ok({ 
+                exams: availableExams,
+                total: availableExams.length 
+            }, 'Available exams retrieved successfully').send(res);
+        } catch (error) {
+            this.logger.error('Error getting available exams:', error);
+            next(error);
+        }
+    }
 }

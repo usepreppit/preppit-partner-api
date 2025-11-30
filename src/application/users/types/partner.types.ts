@@ -28,7 +28,7 @@ export interface IPartner {
     timezone?: string;
     organization_logo?: string;
     preferred_currency?: 'USD' | 'CAD' | 'NGN' | 'GBP' | 'EUR';
-    exam_types?: ('PEBC_OSCE' | 'IELTS' | 'PLAB' | 'USMLE' | 'NCLEX')[];
+    exam_types?: string[]; // Array of Exam ObjectIds
     // Dashboard next steps tracking
     has_added_candidates?: boolean;
     first_candidate_added_at?: Date;
@@ -50,5 +50,5 @@ export interface PartnerOnboardingDTO {
     timezone: string;
     organization_logo?: string;
     preferred_currency: 'USD' | 'CAD' | 'NGN' | 'GBP' | 'EUR';
-    exam_types: ('PEBC_OSCE' | 'IELTS' | 'PLAB' | 'USMLE' | 'NCLEX')[];
+    exam_types: string[]; // Array of Exam ObjectIds
 }

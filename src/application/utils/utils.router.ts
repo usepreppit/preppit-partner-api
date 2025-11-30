@@ -14,4 +14,7 @@ export default (app: Router) => {
 
     route.get('/medications_on_table/ai_image', utilsController.GetAiMedicationImage.bind(utilsController));
     route.get('/medications_on_table/extract_page', utilsController.ExtractMedicationsOnTablePage.bind(utilsController));
+    
+    // Available exams endpoint for partner onboarding
+    route.get('/available-exams', utilsController.GetExamTypes.bind(utilsController));
 };

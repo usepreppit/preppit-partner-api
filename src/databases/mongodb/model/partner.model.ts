@@ -1,4 +1,4 @@
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
 export interface IPartner extends Document {
   username?: string;
@@ -27,7 +27,7 @@ export interface IPartner extends Document {
   timezone?: string;
   organization_logo?: string;
   preferred_currency?: 'USD' | 'CAD' | 'NGN' | 'GBP' | 'EUR';
-  exam_types?: ('PEBC_OSCE' | 'IELTS' | 'PLAB' | 'USMLE' | 'NCLEX')[];
+  exam_types?: Types.ObjectId[];
   // Next Steps tracking
   has_added_candidates?: boolean;
   first_candidate_added_at?: Date;

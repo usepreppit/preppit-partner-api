@@ -24,7 +24,7 @@ export class PartnerRepository {
     async findById(id: string, select_options: string = ""): Promise<IPartner | null | any> {
         // return only the items that are in the filter
         select_options = select_options ? select_options : "-password"; 
-        return await this.partnerModel.findById(id).select(select_options).lean();
+        return await this.partnerModel.findById(id).select(select_options).populate('exam_types').lean();
     }
 
     async updateById(id: string, updateData: Partial<IPartner>): Promise<IPartner | null> {
@@ -37,7 +37,7 @@ export class PartnerRepository {
     }
 
     async getFullPartnerDetails(id: string): Promise<IPartner | null | any> {
-        const partner = await this.partnerModel.findById(id).lean();
+        const partner = await this.partnerModel.findById(id).populate('exam_types').lean();
         if (!partner) {
             return null;
         }
