@@ -56,37 +56,54 @@ export class CandidatesService {
                 throw new ValidationError('Candidate with this email already exists in this batch');
             }
 
-            // Seat check: if a seat subscription exists for this batch, ensure capacity
+            // Seat check: determine if candidate should be paid for
             const seat = await this.candidatesRepository.getSeatByBatch(partner_id, data.batch_id);
+            let isPaidFor = false;
+            let assignedBatchId = data.batch_id;
+            
             if (seat && seat.is_active) {
-                if ((seat.seats_assigned || 0) >= (seat.seat_count || 0)) {
-                    // No seats available
-                    throw new ApiError(402, 'Seat capacity reached for this batch');
+                const availableSeats = (seat.seat_count || 0) - (seat.seats_assigned || 0);
+                
+                if (availableSeats > 0) {
+                    // Seats available - candidate will be paid for and added to batch
+                    isPaidFor = true;
+                    // Reserve a seat (increment) before creating candidate to avoid race conditions
+                    try {
+                        await this.candidatesRepository.incrementSeatsAssigned(seat._id.toString(), 1);
+                        this.logger.info(`Reserved seat for candidate in batch ${data.batch_id}. Available seats: ${availableSeats - 1}`);
+                    } catch (incErr) {
+                        this.logger.error('Failed to reserve seat before creating candidate', incErr);
+                        throw new ApiError(500, 'Failed to reserve seat');
+                    }
+                } else {
+                    // No seats available - candidate will be unpaid and not added to batch
+                    isPaidFor = false;
+                    assignedBatchId = null as any; // Don't assign to batch
+                    this.logger.info(`No seats available in batch ${data.batch_id}. Creating unpaid candidate.`);
                 }
-                // Reserve a seat (increment) before creating candidate to avoid race conditions.
-                try {
-                    await this.candidatesRepository.incrementSeatsAssigned(seat._id.toString(), 1);
-                } catch (incErr) {
-                    this.logger.error('Failed to reserve seat before creating candidate', incErr);
-                    throw new ApiError(500, 'Failed to reserve seat');
-                }
-                // If candidate creation fails afterwards, we'll decrement in the catch below
+            } else {
+                // No active seat subscription - candidate is unpaid and not added to batch
+                isPaidFor = false;
+                assignedBatchId = null as any;
+                this.logger.info(`No active seat subscription for batch ${data.batch_id}. Creating unpaid candidate.`);
             }
 
             let result: { user: IUser; partnerCandidate: any };
             try {
                 result = await this.candidatesRepository.createCandidate(
                     partner_id,
-                    data.batch_id,
+                    assignedBatchId,
                     data.firstname,
                     data.lastname,
-                    data.email
+                    data.email,
+                    isPaidFor
                 );
             } catch (createErr) {
                 // If we reserved a seat earlier, rollback the reserved seat
-                if (seat && seat.is_active) {
+                if (seat && seat.is_active && isPaidFor) {
                     try {
                         await this.candidatesRepository.incrementSeatsAssigned(seat._id.toString(), -1);
+                        this.logger.info('Rolled back seat reservation after candidate creation failure');
                     } catch (rollbackErr) {
                         this.logger.error('Failed to rollback seat reservation after candidate create failure', rollbackErr);
                     }
@@ -266,10 +283,32 @@ export class CandidatesService {
                 }
             }
 
-            // Third pass: Bulk create candidates (single DB call)
+            // Third pass: Check seat availability and bulk create candidates
             if (candidatesToCreate.length > 0) {
                 try {
-                    const createdResults = await this.candidatesRepository.createCandidatesBulk(candidatesToCreate);
+                    // Get seat information for the batch
+                    const seat = await this.candidatesRepository.getSeatByBatch(partner_id, batch_id);
+                    let availableSeats = 0;
+                    
+                    if (seat && seat.is_active) {
+                        availableSeats = (seat.seat_count || 0) - (seat.seats_assigned || 0);
+                        this.logger.info(`Batch has ${availableSeats} available seats for ${candidatesToCreate.length} candidates`);
+                    } else {
+                        this.logger.info(`No active seat subscription for batch. All candidates will be unpaid.`);
+                    }
+
+                    // Separate candidates into paid and unpaid based on available seats
+                    const paidCandidates = candidatesToCreate.slice(0, availableSeats);
+                    const unpaidCandidates = candidatesToCreate.slice(availableSeats);
+
+                    this.logger.info(`Creating ${paidCandidates.length} paid candidates and ${unpaidCandidates.length} unpaid candidates`);
+
+                    // Create both paid and unpaid candidates
+                    const createdResults = await this.candidatesRepository.createCandidatesBulk(
+                        candidatesToCreate,
+                        seat && seat.is_active ? seat._id.toString() : null,
+                        availableSeats
+                    );
                     
                     results.successful = createdResults.length;
                     results.candidates = createdResults.map(result => ({
@@ -277,8 +316,8 @@ export class CandidatesService {
                         firstname: result.user.firstname,
                         lastname: result.user.lastname || '',
                         email: result.user.email,
-                        batch_id: batch_id,
-                        batch_name: batch.batch_name,
+                        batch_id: result.partnerCandidate.batch_id ? batch_id : undefined,
+                        batch_name: result.partnerCandidate.batch_id ? batch.batch_name : undefined,
                         is_active: result.user.is_active,
                         is_paid_for: result.partnerCandidate.is_paid_for || false,
                         invite_status: result.partnerCandidate.invite_status || 'pending',

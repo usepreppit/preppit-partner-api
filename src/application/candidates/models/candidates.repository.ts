@@ -56,10 +56,11 @@ export class CandidatesRepository {
 
     async createCandidate(
         partner_id: string,
-        batch_id: string,
+        batch_id: string | null,
         firstname: string,
         lastname: string,
-        email: string
+        email: string,
+        is_paid_for: boolean = false
     ): Promise<{ user: IUser; partnerCandidate: IPartnerCandidate }> {
         // Check if user already exists
         let user = await this.userModel.findOne({ email }).lean();
@@ -78,14 +79,20 @@ export class CandidatesRepository {
         }
 
         // Create partner-candidate relationship
-        const partnerCandidate = await this.partnerCandidateModel.create({
+        const partnerCandidateData: any = {
             partner_id: new mongoose.Types.ObjectId(partner_id),
             candidate_id: user._id,
-            batch_id: new mongoose.Types.ObjectId(batch_id),
-            is_paid_for: false,
+            is_paid_for,
             invite_status: 'pending',
             invite_sent_at: new Date()
-        });
+        };
+
+        // Only add batch_id if seats are available (is_paid_for = true)
+        if (batch_id) {
+            partnerCandidateData.batch_id = new mongoose.Types.ObjectId(batch_id);
+        }
+
+        const partnerCandidate = await this.partnerCandidateModel.create(partnerCandidateData);
 
         return { user: user as IUser, partnerCandidate };
     }
@@ -277,7 +284,9 @@ export class CandidatesRepository {
             firstname: string;
             lastname: string;
             email: string;
-        }>
+        }>,
+        seat_id: string | null = null,
+        availableSeats: number = 0
     ): Promise<Array<{ user: IUser; partnerCandidate: IPartnerCandidate }>> {
         // Get unique emails
         const emails = [...new Set(candidatesData.map(d => d.email))];
@@ -322,23 +331,37 @@ export class CandidatesRepository {
             }
         }
         
-        // Create partner-candidate relationships
-        const partnerCandidateData = candidatesData.map(data => {
+        // Create partner-candidate relationships with seat availability logic
+        const partnerCandidateData = candidatesData.map((data, index) => {
             const user = existingUserMap.get(data.email);
-            return {
+            const isPaidFor = index < availableSeats; // First N candidates are paid
+            
+            const candidateData: any = {
                 partner_id: new mongoose.Types.ObjectId(data.partner_id),
                 candidate_id: user!._id,
-                batch_id: new mongoose.Types.ObjectId(data.batch_id),
-                is_paid_for: false,
+                is_paid_for: isPaidFor,
                 invite_status: 'pending' as const,
                 invite_sent_at: new Date()
             };
+
+            // Only add batch_id if candidate is paid for
+            if (isPaidFor) {
+                candidateData.batch_id = new mongoose.Types.ObjectId(data.batch_id);
+            }
+
+            return candidateData;
         });
         
         const partnerCandidates = await this.partnerCandidateModel.insertMany(
             partnerCandidateData,
             { ordered: false }
         );
+
+        // Increment seats_assigned if we have a seat subscription and paid candidates
+        if (seat_id && availableSeats > 0) {
+            const paidCount = Math.min(availableSeats, candidatesData.length);
+            await this.incrementSeatsAssigned(seat_id, paidCount);
+        }
         
         // Combine results
         return candidatesData.map((data, index) => {
