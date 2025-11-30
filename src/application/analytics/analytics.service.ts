@@ -1,7 +1,7 @@
 import { inject, injectable } from 'inversify';
-import { Logger } from 'winston';
 import { AnalyticsRepository } from './models/analytics.repository';
 import { ApiError } from '../../helpers/error.helper';
+import { Logger } from '../../startup/logger';
 
 export interface OverviewMetrics {
     total_candidates_onboarded: number;
@@ -59,11 +59,23 @@ export interface AtRiskCandidate {
     email: string;
     batch_name: string;
     risk_factors: string[];
+    risk_level: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
     days_since_last_practice: number;
     total_sessions: number;
     average_score: number;
+    recent_avg_score: number;
     incomplete_modules: number;
+    total_modules_attempted: number;
+    completed_modules: number;
     last_practice_date: Date | null;
+    sessions_last_7_days: number;
+    sessions_last_14_days: number;
+    sessions_last_30_days: number;
+    minutes_last_7_days: number;
+    total_minutes: number;
+    low_score_count: number;
+    very_low_score_count: number;
+    failed_sessions: number;
 }
 
 export interface AtRiskCandidatesData {
@@ -78,7 +90,7 @@ export interface AtRiskCandidatesData {
 export class AnalyticsService {
     constructor(
         @inject('AnalyticsRepository') private analyticsRepository: AnalyticsRepository,
-        @inject('Logger') private logger: Logger
+        @inject(Logger) private logger: Logger
     ) {}
 
     async getOverviewMetrics(partner_id: string): Promise<OverviewMetrics> {

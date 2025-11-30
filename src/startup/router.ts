@@ -12,6 +12,7 @@ import payments_router from '../application/payments/payments.router';
 import subscriptions_router from '../application/subscriptions/subscriptions.router';
 import transactions_router from '../application/transactions/transactions.router';
 import { createAnalyticsRouter } from '../application/analytics/analytics.router';
+import partnerExamsRouter from '../application/partner-exams/partner-exams.router';
 import { container } from './di/container';
 import { NotFoundError } from '../helpers/error.helper';
 
@@ -37,6 +38,7 @@ export default() => {
     subscriptions_router(app);
     transactions_router(app);
     app.use('/analytics', createAnalyticsRouter(container));
+    app.use('/partner-exams', partnerExamsRouter);
     app.use((_, __, next) => {
         next(new NotFoundError('Route not found'));
     });

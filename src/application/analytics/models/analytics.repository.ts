@@ -496,16 +496,108 @@ export class AnalyticsRepository {
                             }
                         },
                         {
-                            $group: {
-                                _id: null,
-                                total_sessions: { $sum: 1 },
-                                average_score: { $avg: '$score' },
-                                last_practice: { $max: '$createdAt' },
-                                low_score_count: {
-                                    $sum: {
-                                        $cond: [{ $lt: ['$score', 50] }, 1, 0]
+                            $facet: {
+                                overall_stats: [
+                                    {
+                                        $group: {
+                                            _id: null,
+                                            total_sessions: { $sum: 1 },
+                                            total_minutes: { $sum: '$duration_minutes' },
+                                            average_score: { $avg: '$score' },
+                                            last_practice: { $max: '$createdAt' },
+                                            low_score_count: {
+                                                $sum: {
+                                                    $cond: [{ $lt: ['$score', 50] }, 1, 0]
+                                                }
+                                            },
+                                            very_low_score_count: {
+                                                $sum: {
+                                                    $cond: [{ $lt: ['$score', 40] }, 1, 0]
+                                                }
+                                            },
+                                            failed_sessions: {
+                                                $sum: {
+                                                    $cond: [{ $lt: ['$score', 60] }, 1, 0]
+                                                }
+                                            }
+                                        }
                                     }
-                                }
+                                ],
+                                last_7_days: [
+                                    {
+                                        $match: {
+                                            createdAt: { $gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) }
+                                        }
+                                    },
+                                    {
+                                        $group: {
+                                            _id: null,
+                                            sessions_last_7_days: { $sum: 1 },
+                                            minutes_last_7_days: { $sum: '$duration_minutes' },
+                                            avg_score_last_7_days: { $avg: '$score' }
+                                        }
+                                    }
+                                ],
+                                last_14_days: [
+                                    {
+                                        $match: {
+                                            createdAt: { $gte: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000) }
+                                        }
+                                    },
+                                    {
+                                        $group: {
+                                            _id: null,
+                                            sessions_last_14_days: { $sum: 1 }
+                                        }
+                                    }
+                                ],
+                                last_30_days: [
+                                    {
+                                        $match: {
+                                            createdAt: { $gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) }
+                                        }
+                                    },
+                                    {
+                                        $group: {
+                                            _id: null,
+                                            sessions_last_30_days: { $sum: 1 }
+                                        }
+                                    }
+                                ],
+                                score_trend: [
+                                    { $sort: { createdAt: -1 } },
+                                    { $limit: 5 },
+                                    {
+                                        $group: {
+                                            _id: null,
+                                            recent_scores: { $push: '$score' },
+                                            recent_avg: { $avg: '$score' }
+                                        }
+                                    }
+                                ],
+                                module_completion: [
+                                    {
+                                        $group: {
+                                            _id: '$module_id',
+                                            completed: {
+                                                $max: {
+                                                    $cond: [
+                                                        { $or: [{ $gte: ['$score', 70] }, { $eq: ['$status', 'completed'] }] },
+                                                        1,
+                                                        0
+                                                    ]
+                                                }
+                                            }
+                                        }
+                                    },
+                                    {
+                                        $group: {
+                                            _id: null,
+                                            total_modules: { $sum: 1 },
+                                            completed_modules: { $sum: '$completed' }
+                                        }
+                                    }
+                                ]
                             }
                         }
                     ],
@@ -520,10 +612,31 @@ export class AnalyticsRepository {
             },
             {
                 $addFields: {
-                    total_sessions: { $ifNull: ['$activity.total_sessions', 0] },
-                    average_score: { $ifNull: ['$activity.average_score', 0] },
-                    last_practice_date: '$activity.last_practice',
-                    low_score_count: { $ifNull: ['$activity.low_score_count', 0] }
+                    overall_stats: { $arrayElemAt: ['$activity.overall_stats', 0] },
+                    last_7_days_stats: { $arrayElemAt: ['$activity.last_7_days', 0] },
+                    last_14_days_stats: { $arrayElemAt: ['$activity.last_14_days', 0] },
+                    last_30_days_stats: { $arrayElemAt: ['$activity.last_30_days', 0] },
+                    score_trend_stats: { $arrayElemAt: ['$activity.score_trend', 0] },
+                    module_stats: { $arrayElemAt: ['$activity.module_completion', 0] }
+                }
+            },
+            {
+                $addFields: {
+                    total_sessions: { $ifNull: ['$overall_stats.total_sessions', 0] },
+                    total_minutes: { $ifNull: ['$overall_stats.total_minutes', 0] },
+                    average_score: { $ifNull: ['$overall_stats.average_score', 0] },
+                    last_practice_date: '$overall_stats.last_practice',
+                    low_score_count: { $ifNull: ['$overall_stats.low_score_count', 0] },
+                    very_low_score_count: { $ifNull: ['$overall_stats.very_low_score_count', 0] },
+                    failed_sessions: { $ifNull: ['$overall_stats.failed_sessions', 0] },
+                    sessions_last_7_days: { $ifNull: ['$last_7_days_stats.sessions_last_7_days', 0] },
+                    minutes_last_7_days: { $ifNull: ['$last_7_days_stats.minutes_last_7_days', 0] },
+                    avg_score_last_7_days: { $ifNull: ['$last_7_days_stats.avg_score_last_7_days', 0] },
+                    sessions_last_14_days: { $ifNull: ['$last_14_days_stats.sessions_last_14_days', 0] },
+                    sessions_last_30_days: { $ifNull: ['$last_30_days_stats.sessions_last_30_days', 0] },
+                    recent_avg_score: { $ifNull: ['$score_trend_stats.recent_avg', 0] },
+                    total_modules_attempted: { $ifNull: ['$module_stats.total_modules', 0] },
+                    completed_modules: { $ifNull: ['$module_stats.completed_modules', 0] }
                 }
             },
             {
@@ -540,6 +653,30 @@ export class AnalyticsRepository {
                             },
                             else: 999
                         }
+                    },
+                    incomplete_modules: {
+                        $subtract: [
+                            '$total_modules_attempted',
+                            '$completed_modules'
+                        ]
+                    },
+                    score_declining: {
+                        $cond: {
+                            if: { $and: [
+                                { $gt: ['$average_score', 0] },
+                                { $gt: ['$recent_avg_score', 0] }
+                            ]},
+                            then: {
+                                $lt: [
+                                    '$recent_avg_score',
+                                    { $subtract: ['$average_score', 10] }
+                                ]
+                            },
+                            else: false
+                        }
+                    },
+                    weekly_engagement_low: {
+                        $lt: ['$minutes_last_7_days', 30]
                     }
                 }
             },
@@ -550,8 +687,27 @@ export class AnalyticsRepository {
                             input: [
                                 {
                                     $cond: [
-                                        { $gte: ['$days_since_last_practice', 14] },
-                                        'No practice in 14+ days',
+                                        { $eq: ['$total_sessions', 0] },
+                                        'No practice sessions recorded',
+                                        null
+                                    ]
+                                },
+                                {
+                                    $cond: [
+                                        { $gte: ['$days_since_last_practice', 30] },
+                                        'No practice in 30+ days - Critical',
+                                        null
+                                    ]
+                                },
+                                {
+                                    $cond: [
+                                        {
+                                            $and: [
+                                                { $gte: ['$days_since_last_practice', 14] },
+                                                { $lt: ['$days_since_last_practice', 30] }
+                                            ]
+                                        },
+                                        'No practice in 14-29 days - High risk',
                                         null
                                     ]
                                 },
@@ -563,34 +719,198 @@ export class AnalyticsRepository {
                                                 { $lt: ['$days_since_last_practice', 14] }
                                             ]
                                         },
-                                        'No practice in 7-14 days',
+                                        'No practice in 7-13 days',
                                         null
                                     ]
                                 },
                                 {
                                     $cond: [
-                                        { $lt: ['$average_score', 50] },
-                                        'Consistently low scores (<50%)',
+                                        { $lt: ['$average_score', 40] },
+                                        'Very low average score (<40%) - Critical',
                                         null
                                     ]
                                 },
                                 {
                                     $cond: [
-                                        { $gte: ['$low_score_count', 3] },
-                                        'Multiple low-scoring sessions',
+                                        {
+                                            $and: [
+                                                { $gte: ['$average_score', 40] },
+                                                { $lt: ['$average_score', 50] }
+                                            ]
+                                        },
+                                        'Low average score (40-49%)',
                                         null
                                     ]
                                 },
                                 {
                                     $cond: [
-                                        { $eq: ['$total_sessions', 0] },
-                                        'No practice sessions',
+                                        {
+                                            $and: [
+                                                { $gte: ['$average_score', 50] },
+                                                { $lt: ['$average_score', 60] }
+                                            ]
+                                        },
+                                        'Below passing average (50-59%)',
+                                        null
+                                    ]
+                                },
+                                {
+                                    $cond: [
+                                        { $gte: ['$very_low_score_count', 3] },
+                                        'Multiple very poor sessions (3+ scores <40%)',
+                                        null
+                                    ]
+                                },
+                                {
+                                    $cond: [
+                                        { $gte: ['$low_score_count', 5] },
+                                        'Frequent low scores (5+ scores <50%)',
+                                        null
+                                    ]
+                                },
+                                {
+                                    $cond: [
+                                        {
+                                            $and: [
+                                                { $gte: ['$failed_sessions', 3] },
+                                                { $gte: ['$total_sessions', 5] }
+                                            ]
+                                        },
+                                        'High failure rate (60%+ sessions below 60%)',
+                                        null
+                                    ]
+                                },
+                                {
+                                    $cond: [
+                                        '$score_declining',
+                                        'Declining performance trend (10+ point drop)',
+                                        null
+                                    ]
+                                },
+                                {
+                                    $cond: [
+                                        { $eq: ['$sessions_last_7_days', 0] },
+                                        'No practice this week',
+                                        null
+                                    ]
+                                },
+                                {
+                                    $cond: [
+                                        { $eq: ['$sessions_last_14_days', 0] },
+                                        'No practice in past 2 weeks',
+                                        null
+                                    ]
+                                },
+                                {
+                                    $cond: [
+                                        '$weekly_engagement_low',
+                                        'Very low weekly engagement (<30 min/week)',
+                                        null
+                                    ]
+                                },
+                                {
+                                    $cond: [
+                                        {
+                                            $and: [
+                                                { $gt: ['$total_sessions', 5] },
+                                                { $lt: ['$total_minutes', 100] }
+                                            ]
+                                        },
+                                        'Short session durations (avg <20 min)',
+                                        null
+                                    ]
+                                },
+                                {
+                                    $cond: [
+                                        {
+                                            $and: [
+                                                { $gt: ['$total_modules_attempted', 0] },
+                                                { $gte: ['$incomplete_modules', 3] }
+                                            ]
+                                        },
+                                        'Multiple incomplete modules (3+)',
+                                        null
+                                    ]
+                                },
+                                {
+                                    $cond: [
+                                        {
+                                            $and: [
+                                                { $gt: ['$total_modules_attempted', 5] },
+                                                { $lt: [
+                                                    { $divide: ['$completed_modules', '$total_modules_attempted'] },
+                                                    0.3
+                                                ]}
+                                            ]
+                                        },
+                                        'Low module completion rate (<30%)',
+                                        null
+                                    ]
+                                },
+                                {
+                                    $cond: [
+                                        {
+                                            $and: [
+                                                { $lt: ['$sessions_last_30_days', 3] },
+                                                { $gt: ['$total_sessions', 0] }
+                                            ]
+                                        },
+                                        'Very low monthly activity (<3 sessions/month)',
+                                        null
+                                    ]
+                                },
+                                {
+                                    $cond: [
+                                        {
+                                            $and: [
+                                                { $lt: ['$avg_score_last_7_days', 50] },
+                                                { $gt: ['$sessions_last_7_days', 0] }
+                                            ]
+                                        },
+                                        'Recent poor performance (last 7 days avg <50%)',
                                         null
                                     ]
                                 }
                             ],
                             as: 'factor',
                             cond: { $ne: ['$$factor', null] }
+                        }
+                    },
+                    risk_level: {
+                        $switch: {
+                            branches: [
+                                {
+                                    case: {
+                                        $or: [
+                                            { $gte: ['$days_since_last_practice', 30] },
+                                            { $lt: ['$average_score', 40] },
+                                            { $eq: ['$total_sessions', 0] }
+                                        ]
+                                    },
+                                    then: 'CRITICAL'
+                                },
+                                {
+                                    case: {
+                                        $or: [
+                                            { $gte: ['$days_since_last_practice', 14] },
+                                            { $lt: ['$average_score', 50] },
+                                            { $gte: ['$very_low_score_count', 3] }
+                                        ]
+                                    },
+                                    then: 'HIGH'
+                                },
+                                {
+                                    case: {
+                                        $or: [
+                                            { $gte: ['$days_since_last_practice', 7] },
+                                            { $lt: ['$average_score', 60] },
+                                            '$weekly_engagement_low'
+                                        ]
+                                    },
+                                    then: 'MEDIUM'
+                                }
+                            ],
+                            default: 'LOW'
                         }
                     }
                 }
@@ -607,14 +927,26 @@ export class AnalyticsRepository {
                     email: '$user.email',
                     batch_name: { $ifNull: ['$batch_name', 'No batch assigned'] },
                     risk_factors: 1,
+                    risk_level: 1,
                     days_since_last_practice: 1,
                     total_sessions: 1,
                     average_score: { $round: ['$average_score', 2] },
-                    incomplete_modules: 0, // TODO: Calculate based on actual module completion data
-                    last_practice_date: 1
+                    recent_avg_score: { $round: ['$recent_avg_score', 2] },
+                    incomplete_modules: 1,
+                    total_modules_attempted: 1,
+                    completed_modules: 1,
+                    last_practice_date: 1,
+                    sessions_last_7_days: 1,
+                    sessions_last_14_days: 1,
+                    sessions_last_30_days: 1,
+                    minutes_last_7_days: 1,
+                    total_minutes: 1,
+                    low_score_count: 1,
+                    very_low_score_count: 1,
+                    failed_sessions: 1
                 }
             },
-            { $sort: { days_since_last_practice: -1, average_score: 1 } }
+            { $sort: { risk_level: 1, days_since_last_practice: -1, average_score: 1 } }
         ];
 
         // Get total count

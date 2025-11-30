@@ -2,13 +2,13 @@ import { Request, Response, NextFunction } from 'express';
 import { inject, injectable } from 'inversify';
 import { AnalyticsService } from './analytics.service';
 import { ApiResponse } from '../../helpers/response.helper';
-import { Logger } from 'winston';
+import { Logger } from '../../startup/logger';
 
 @injectable()
 export class AnalyticsController {
     constructor(
         @inject('AnalyticsService') private analyticsService: AnalyticsService,
-        @inject('Logger') private logger: Logger
+        @inject(Logger) private logger: Logger
     ) {}
 
     async GetOverviewMetrics(req: Request, res: Response, next: NextFunction): Promise<void> {

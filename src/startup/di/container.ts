@@ -16,6 +16,7 @@ import { PaymentsController } from '../../application/payments/payments.controll
 import { SubscriptionsController } from '../../application/subscriptions/subscriptions.controller';
 import { TransactionsController } from '../../application/transactions/transactions.controller';
 import { AnalyticsController } from '../../application/analytics/analytics.controller';
+import { PartnerExamsController } from '../../application/partner-exams/partner-exams.controller';
 
 
 // Import Services
@@ -30,6 +31,7 @@ import { PaymentsService } from '../../application/payments/payments.service';
 import { SubscriptionService } from '../../application/subscriptions/subscriptions.service';
 import { TransactionsService } from '../../application/transactions/transactions.service';
 import { AnalyticsService } from '../../application/analytics/analytics.service';
+import { PartnerExamsService } from '../../application/partner-exams/partner-exams.service';
 
 
 // import { UserService } from '../../features/users/service/user.service';
@@ -74,6 +76,7 @@ import { PaymentsRepository } from '../../application/payments/models/payments.r
 import { SubscriptionRepository } from '../../application/subscriptions/models/subscriptions.repository';
 import { TransactionRepository } from '../../application/transactions/models/transactions.repository';
 import { AnalyticsRepository } from '../../application/analytics/models/analytics.repository';
+import { PartnerExamsRepository } from '../../application/partner-exams/models/partner-exams.repository';
 
 
 
@@ -96,6 +99,7 @@ container.bind<PaymentsController>(PaymentsController).toSelf();
 container.bind<SubscriptionsController>(SubscriptionsController).toSelf();
 container.bind<TransactionsController>(TransactionsController).toSelf();
 container.bind<AnalyticsController>('AnalyticsController').to(AnalyticsController);
+container.bind<PartnerExamsController>(PartnerExamsController).toSelf();
 
 
 // Services
@@ -110,6 +114,7 @@ container.bind<PaymentsService>(PaymentsService).toSelf();
 container.bind<SubscriptionService>(SubscriptionService).toSelf();
 container.bind<TransactionsService>(TransactionsService).toSelf();
 container.bind<AnalyticsService>('AnalyticsService').to(AnalyticsService);
+container.bind<PartnerExamsService>('PartnerExamsService').to(PartnerExamsService);
 
 
 
@@ -125,6 +130,7 @@ container.bind<PaymentsRepository>(PaymentsRepository).toSelf();
 container.bind<SubscriptionRepository>(SubscriptionRepository).toSelf();
 container.bind<TransactionRepository>(TransactionRepository).toSelf();
 container.bind<AnalyticsRepository>('AnalyticsRepository').to(AnalyticsRepository);
+container.bind<PartnerExamsRepository>('PartnerExamsRepository').to(PartnerExamsRepository);
 
 
 //Models
