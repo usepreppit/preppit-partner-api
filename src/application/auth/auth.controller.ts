@@ -43,8 +43,8 @@ export class AuthController {
         const email = req.query.email as string;
         const token = req.query.verify_token as string;
         try {
-            await this.authService.VerifyEmail(email, token);
-            res.json({ message: 'Email verified' });
+            const verify_email = await this.authService.VerifyEmail(email, token);
+            ApiResponse.ok(verify_email, 'Email successfully verified.').send(res);
         } catch (error) {
             this.logger.error('Error verifying email', error);
             next(error);

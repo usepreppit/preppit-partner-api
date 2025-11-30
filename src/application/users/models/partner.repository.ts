@@ -16,7 +16,7 @@ export class PartnerRepository {
 
     async findByEmail(email: string, withPassword = false): Promise<IPartner | null> {
         const find_partner = (withPassword) 
-            ? await this.partnerModel.findOne({ email }).select("+password") 
+            ? await this.partnerModel.findOne({ email }).select("+password +verification_token +reset_token") 
             : await this.partnerModel.findOne({ email }).select("-password");
         return find_partner;
     }

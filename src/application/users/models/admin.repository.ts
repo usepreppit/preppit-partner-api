@@ -15,7 +15,7 @@ export class AdminRepository {
 
     async findByEmail(email: string, withPassword = false): Promise<IAdmin | null> {
         const find_admin = (withPassword) 
-            ? await this.adminModel.findOne({ email }).select("+password") 
+            ? await this.adminModel.findOne({ email }).select("+password +verification_token +reset_token") 
             : await this.adminModel.findOne({ email }).select("-password");
         return find_admin;
     }

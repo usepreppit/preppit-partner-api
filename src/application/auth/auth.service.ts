@@ -14,8 +14,6 @@ import { randomBytes } from 'crypto';
 import { getTokens } from './../../helpers/thirdparty/googleapis.helper';
 import { postmarkTemplates } from '../../templates/postmark.templates';
 
-const salt = randomBytes(32).toString('hex');
-
 // export interface SocialDetails {
 // 	firstname: string;
 // 	lastname: string;
@@ -86,12 +84,12 @@ export class AuthService {
 			user.password = hashedPassword; //update the user password with the hashed password
 
 			const accountType = this.getAccountType(user.email);
-			const api_url = process.env.API_URL; //backend URL
+			const base_url = process.env.SENDING_URL; //frontend URL
 			
-			// return the verification token and send mail
-			const verify_token = salt;
-			const activation_url = `api/auth/verify_email?email=${user.email}&verify_token=${verify_token}`;
-			const verification_url = `${api_url}/${activation_url}`;
+			// Generate a unique verification token for this user
+			const verify_token = randomBytes(32).toString('hex');
+			const activation_url = `verify-email?email=${user.email}&verify_token=${verify_token}`;
+			const verification_url = `${base_url}/${activation_url}`;
 
 			//update the save record with the verification token
 			user.verification_token = verify_token;
@@ -133,7 +131,7 @@ export class AuthService {
 			await this.emailService.sendTemplateEmail(
 				postmarkTemplates.ACTIVATE_ACCOUNT, //Postmark Template ID for Verify Account
 				user.email,
-				{ firstname: user.firstname, email: user.email, base_url: api_url, verification_url, activation_url: activation_url }
+				{ firstname: user.firstname, email: user.email, base_url: base_url, verification_url, activation_url: activation_url }
 			);
 
 			this.logger.info(`New user created with email: ${user.email}`);
@@ -157,6 +155,7 @@ export class AuthService {
 				user = await this.partnerRepository.findByEmail(email, true);
 			}
 
+
 			if (!user) {
 				throw new ApiError(500, 'User not found, Please use the link sent to your email.');
 			}
@@ -170,7 +169,6 @@ export class AuthService {
 
 			//compare the token sent with the hash
 			if (hash !== user.verification_token) {
-				console.log(hash, user.verification_token);
 				throw new ApiError(400, 'Invalid token, Please use the link sent to your email.');
 			} else {
 				//update the user email_verified field
@@ -267,20 +265,18 @@ export class AuthService {
 						checkExistingUser = await this.partnerRepository.findByEmail(user_token_and_profile.email, true);
 					}
 
-					if (checkExistingUser) {
-						//if user exists, return the user data
-						user_data = checkExistingUser;
-					} else {
-						//user does not exist, create a new user
-						const userData = {
-							firstname: user_token_and_profile.name.split(' ')[0],
-							lastname: user_token_and_profile.name.split(' ')[1] || '',
-							email: user_token_and_profile.email,
-							password: salt, //use a random salt as password
-							is_active: true, //set the user as active
-						};
-
-						let newUser: IAdmin | IPartner;
+				if (checkExistingUser) {
+					//if user exists, return the user data
+					user_data = checkExistingUser;
+				} else {
+					//user does not exist, create a new user
+					const userData = {
+						firstname: user_token_and_profile.name.split(' ')[0],
+						lastname: user_token_and_profile.name.split(' ')[1] || '',
+						email: user_token_and_profile.email,
+						password: randomBytes(32).toString('hex'), //use a random password for OAuth users
+						is_active: true, //set the user as active
+					};						let newUser: IAdmin | IPartner;
 						if (accountType === 'admin') {
 							newUser = await this.adminRepository.create({
 								...userData,
@@ -339,8 +335,8 @@ export class AuthService {
 				return Promise.resolve(); //to prevent email enumeration
 			}
 
-			//send email to the user
-			const reset_token = salt;
+			//Generate unique reset token for this request
+			const reset_token = randomBytes(32).toString('hex');
 
 			//update the save record with the verification token
 			user.reset_token = reset_token;
@@ -371,15 +367,14 @@ export class AuthService {
 	async ResendPasswordReset(email: string): Promise<void> {
 		try {
 			const user = await this.userRepository.findByEmail(email, true);
-			if (!user) {
-				throw new Error('User not found');
-			}
+		if (!user) {
+			throw new Error('User not found');
+		}
 
-			// const sending_url = process.env.API_URL;
-			const reset_token = salt;
-			// const reset_url = `${sending_url}/reset_password?email=${user.email}&reset_token=${reset_token}`;
-
-			//update the save record with the verification token
+		// const sending_url = process.env.API_URL;
+		// Generate unique reset token for this request
+		const reset_token = randomBytes(32).toString('hex');
+		// const reset_url = `${sending_url}/reset_password?email=${user.email}&reset_token=${reset_token}`;			//update the save record with the verification token
 			user.reset_token = reset_token;
 			if (!user._id) {
 				throw new Error('User ID is undefined');
