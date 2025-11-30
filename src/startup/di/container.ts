@@ -15,6 +15,7 @@ import { CandidatesController } from '../../application/candidates/candidates.co
 import { PaymentsController } from '../../application/payments/payments.controller';
 import { SubscriptionsController } from '../../application/subscriptions/subscriptions.controller';
 import { TransactionsController } from '../../application/transactions/transactions.controller';
+import { AnalyticsController } from '../../application/analytics/analytics.controller';
 
 
 // Import Services
@@ -28,6 +29,7 @@ import { CandidatesService } from '../../application/candidates/candidates.servi
 import { PaymentsService } from '../../application/payments/payments.service';
 import { SubscriptionService } from '../../application/subscriptions/subscriptions.service';
 import { TransactionsService } from '../../application/transactions/transactions.service';
+import { AnalyticsService } from '../../application/analytics/analytics.service';
 
 
 // import { UserService } from '../../features/users/service/user.service';
@@ -71,6 +73,7 @@ import { CandidatesRepository } from '../../application/candidates/models/candid
 import { PaymentsRepository } from '../../application/payments/models/payments.repository';
 import { SubscriptionRepository } from '../../application/subscriptions/models/subscriptions.repository';
 import { TransactionRepository } from '../../application/transactions/models/transactions.repository';
+import { AnalyticsRepository } from '../../application/analytics/models/analytics.repository';
 
 
 
@@ -92,6 +95,7 @@ container.bind<CandidatesController>(CandidatesController).toSelf();
 container.bind<PaymentsController>(PaymentsController).toSelf();
 container.bind<SubscriptionsController>(SubscriptionsController).toSelf();
 container.bind<TransactionsController>(TransactionsController).toSelf();
+container.bind<AnalyticsController>('AnalyticsController').to(AnalyticsController);
 
 
 // Services
@@ -105,6 +109,7 @@ container.bind<CandidatesService>(CandidatesService).toSelf();
 container.bind<PaymentsService>(PaymentsService).toSelf();
 container.bind<SubscriptionService>(SubscriptionService).toSelf();
 container.bind<TransactionsService>(TransactionsService).toSelf();
+container.bind<AnalyticsService>('AnalyticsService').to(AnalyticsService);
 
 
 
@@ -119,6 +124,7 @@ container.bind<CandidatesRepository>(CandidatesRepository).toSelf();
 container.bind<PaymentsRepository>(PaymentsRepository).toSelf();
 container.bind<SubscriptionRepository>(SubscriptionRepository).toSelf();
 container.bind<TransactionRepository>(TransactionRepository).toSelf();
+container.bind<AnalyticsRepository>('AnalyticsRepository').to(AnalyticsRepository);
 
 
 //Models
@@ -138,6 +144,7 @@ container.bind<typeof PaymentMethodModel>('PaymentMethodModel').toConstantValue(
 container.bind<typeof PaymentPlansModel>('PaymentPlansModel').toConstantValue(PaymentPlansModel);
 container.bind<typeof SubscriptionsModel>('SubscriptionsModel').toConstantValue(SubscriptionsModel);
 container.bind<typeof UserActivityLogModel>('UserActivityLogModel').toConstantValue(UserActivityLogModel);
+container.bind<typeof UserActivityLogModel>('ActivityModel').toConstantValue(UserActivityLogModel);
 container.bind<typeof CandidateBatchModel>('CandidateBatchModel').toConstantValue(CandidateBatchModel);
 container.bind<typeof PartnerCandidateModel>('PartnerCandidateModel').toConstantValue(PartnerCandidateModel);
 container.bind<typeof SeatModel>('SeatModel').toConstantValue(SeatModel);
