@@ -1,6 +1,7 @@
 import { inject, injectable } from 'inversify';
 import { Model } from 'mongoose';
 import { IPartner, PartnerCreateDTO } from '../types/partner.types';
+import { PaymentMethodModel } from '../../payments/models/payment_methods.models';
 
 @injectable()
 export class PartnerRepository {
@@ -36,7 +37,18 @@ export class PartnerRepository {
     }
 
     async getFullPartnerDetails(id: string): Promise<IPartner | null | any> {
-        return await this.partnerModel.findById(id).lean();
+        const partner = await this.partnerModel.findById(id).lean();
+        if (!partner) {
+            return null;
+        }
+        
+        // Fetch payment methods for this partner
+        const payments = await PaymentMethodModel.find({ user_id: id }).lean();
+        
+        return {
+            ...partner,
+            payments: payments || []
+        };
     }
 
     async markCandidateAdded(partner_id: string): Promise<void> {

@@ -421,7 +421,7 @@ export class PaymentsService {
 			}
 			
 			// Get partner's saved cards from Stripe
-			const stripe_customer_id = partner_profile.payments[0].stripe_customer_id;
+			const stripe_customer_id = partner_profile.payments[0].payment_customer_id;
 			const cards = await getCustomerCards(stripe_customer_id, 20); // Get up to 20 cards
 			
 			// Get default payment method
@@ -451,7 +451,7 @@ export class PaymentsService {
 				throw new ApiError(400, 'No payment profile found. Please add a payment method first.');
 			}
 
-			const stripe_customer_id = partner_profile.payments[0].stripe_customer_id;
+			const stripe_customer_id = partner_profile.payments[0].payment_customer_id;
 
 			// Set as default in Stripe
 			await addCardToCustomer(stripe_customer_id, payment_method_id, true);
@@ -502,7 +502,7 @@ export class PaymentsService {
 				throw new ApiError(400, 'No payment profile found. Please add a payment method first.');
 			}
 
-			const stripe_customer_id = partner_profile.payments[0].stripe_customer_id;
+			const stripe_customer_id = partner_profile.payments[0].payment_customer_id;
 
 			// Create payment intent with metadata
 			const paymentIntent = await CreatePaymentIntent(
@@ -531,52 +531,166 @@ export class PaymentsService {
 
 	async confirmSeatPurchase(
 		partner_id: string,
-		payment_intent_id: string,
-		batch_name: string
+		batch_name: string,
+		payment_method_id: string,
+		seat_count: number,
+		sessions_per_day: 3 | 5 | 10 | -1,
+		months: number
 	): Promise<any> {
 		try {
-			// Get partner profile
-			const partner_profile = await this.partnerRepository.getFullPartnerDetails(partner_id);
-			if (!partner_profile.payments || !partner_profile.payments.length) {
-				throw new ApiError(400, 'No payment profile found');
+			// Validate inputs
+			if (seat_count < 10) {
+				throw new ApiError(400, 'Minimum seat purchase is 10');
 			}
 
-			const stripe_customer_id = partner_profile.payments[0].stripe_customer_id;
+			const validSessions = [3, 5, 10, -1];
+			if (!validSessions.includes(sessions_per_day)) {
+				throw new ApiError(400, 'Invalid sessions_per_day value. Must be 3, 5, 10, or -1 (unlimited)');
+			}
 
-			// Retrieve the payment intent to verify payment
+			const validMonths = [1, 3, 6, 12];
+			if (!validMonths.includes(months)) {
+				throw new ApiError(400, 'Invalid months value. Must be 1, 3, 6, or 12');
+			}
+
+			// Get partner profile
+			const partner_profile = await this.partnerRepository.getFullPartnerDetails(partner_id);
+			
+			// Create Stripe customer and payment profile if doesn't exist
+			let stripe_customer_id: string;
+			if (!partner_profile.payments || !partner_profile.payments.length) {
+				this.logger.info(`No payment profile found for partner ${partner_id}, creating Stripe customer`);
+				
+				// Create Stripe customer
+				const create_stripe_customer = await createStripeCustomer(
+					partner_profile.email,
+					partner_id,
+					`${partner_profile.firstname} ${partner_profile.lastname || ''}`
+				);
+				
+				// Save payment profile to database
+				await this.paymentsRepository.CreatePaymentProfile(
+					partner_id, 
+					create_stripe_customer.id, 
+					create_stripe_customer
+				);
+				
+				stripe_customer_id = create_stripe_customer.id;
+				this.logger.info(`Created Stripe customer ${stripe_customer_id} for partner ${partner_id}`);
+			} else {
+				stripe_customer_id = partner_profile.payments[0].payment_customer_id;
+			}
+
+			// Calculate pricing
+			const pricing = await this.calculateSeatPricing(seat_count, sessions_per_day, months);
+
+			// Initialize Stripe
 			const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-			const paymentIntent = await stripe.paymentIntents.retrieve(payment_intent_id);
+
+			// Attach the payment method to the customer first
+			let paymentMethod;
+			try {
+				paymentMethod = await stripe.paymentMethods.attach(payment_method_id, {
+					customer: stripe_customer_id,
+				});
+				this.logger.info(`Attached payment method ${payment_method_id} to customer ${stripe_customer_id}`);
+			} catch (error: any) {
+				// If already attached, retrieve it
+				if (error.code === 'resource_already_exists' || error.code === 'payment_method_already_attached') {
+					paymentMethod = await stripe.paymentMethods.retrieve(payment_method_id);
+					this.logger.info(`Payment method ${payment_method_id} already attached to customer`);
+				} else {
+					this.logger.error(`Error attaching payment method: ${error.message}`);
+					throw new ApiError(400, `Failed to attach payment method: ${error.message}`);
+				}
+			}
+
+			// Update payment profile with payment method details
+			try {
+				await this.paymentsRepository.UpdatePaymentProfile(
+					{ user_id: partner_id, payment_customer_id: stripe_customer_id },
+					{
+						...partner_profile.payments?.[0]?.payment_customer_details || {},
+						payment_method_id: payment_method_id,
+						payment_method_details: paymentMethod,
+						last_four: paymentMethod.card?.last4,
+						card_brand: paymentMethod.card?.brand,
+						exp_month: paymentMethod.card?.exp_month,
+						exp_year: paymentMethod.card?.exp_year,
+					}
+				);
+				this.logger.info(`Updated payment profile with payment method details for partner ${partner_id}`);
+			} catch (error: any) {
+				this.logger.error(`Error updating payment profile: ${error.message}`);
+			}
+
+			// Set as default payment method
+			try {
+				await stripe.customers.update(stripe_customer_id, {
+					invoice_settings: {
+						default_payment_method: payment_method_id,
+					},
+				});
+				this.logger.info(`Set payment method ${payment_method_id} as default for customer ${stripe_customer_id}`);
+			} catch (error: any) {
+				this.logger.error(`Error setting default payment method: ${error.message}`);
+			}
+
+			// Create and confirm the payment intent
+			this.logger.info(`Creating payment intent for partner ${partner_id}: ${seat_count} seats for ${months} month(s)`);
+			const paymentIntent = await stripe.paymentIntents.create({
+				amount: Math.round(pricing.total * 100), // Convert to cents
+				currency: 'usd',
+				customer: stripe_customer_id,
+				payment_method: payment_method_id,
+				confirm: true,
+				automatic_payment_methods: {
+					enabled: true,
+					allow_redirects: 'never'
+				},
+				metadata: {
+					partner_id,
+					batch_name,
+					seat_count,
+					sessions_per_day,
+					months,
+					per_candidate: pricing.per_candidate,
+					total_amount: pricing.total,
+				}
+			});
 
 			// Verify payment succeeded
 			if (paymentIntent.status !== 'succeeded') {
-				throw new ApiError(400, 'Payment not successful');
+				this.logger.error(`Payment failed for partner ${partner_id}: ${paymentIntent.status}`);
+				throw new ApiError(400, `Payment failed with status: ${paymentIntent.status}`);
 			}
 
-			// Verify customer matches
-			if (paymentIntent.customer !== stripe_customer_id) {
-				throw new ApiError(403, 'Payment intent does not belong to this partner');
+			this.logger.info(`Payment succeeded for partner ${partner_id}: $${pricing.total} charged successfully`);
+
+			// Mark payment method setup flag on dashboard
+			try {
+				const partner = await this.partnerRepository.findById(partner_id);
+				if (partner && !partner.payment_method_setup) {
+					await this.partnerRepository.markPaymentMethodSetup(partner_id);
+					this.logger.info(`Marked payment method setup complete for partner ${partner_id}`);
+				}
+			} catch (error: any) {
+				this.logger.error(`Error marking payment method setup: ${error.message}`);
+				// Don't fail the transaction if this fails
 			}
 
-			// Extract metadata
-			const metadata = paymentIntent.metadata;
-			const seat_count = parseInt(metadata.seat_count);
-			const sessions_per_day = parseInt(metadata.sessions_per_day) as 3 | 5 | 10 | -1;
-			const months = parseInt(metadata.months);
-
-			// Create or get batch
+			// Create batch - must be unique per partner
 			let batch;
 			try {
 				batch = await this.candidatesRepository.createBatch(partner_id, batch_name.trim());
-				this.logger.info(`Created new batch: ${batch._id} for seat purchase`);
+				this.logger.info(`Created new batch: ${batch._id} (${batch_name}) for partner ${partner_id}`);
 			} catch (error: any) {
 				if (error.code === 11000) {
-					const batches = await this.candidatesRepository.getAllBatchesByPartnerId(partner_id);
-					batch = batches.find(b => b.batch_name === batch_name.trim());
-					if (!batch) {
-						throw new ApiError(400, 'Batch name already exists but could not be retrieved');
-					}
-					this.logger.info(`Using existing batch: ${batch._id} for seat purchase`);
+					// Duplicate batch name for this partner
+					this.logger.error(`Duplicate batch name '${batch_name}' for partner ${partner_id}`);
+					throw new ApiError(400, `A batch with the name '${batch_name}' already exists. Please choose a different batch name.`);
 				} else {
+					this.logger.error(`Error creating batch: ${error.message}`);
 					throw error;
 				}
 			}
@@ -590,6 +704,7 @@ export class PaymentsService {
 			}
 
 			// Create seat record
+			this.logger.info(`Creating seat subscription for partner ${partner_id}: ${seat_count} seats, ${sessions_per_day} sessions/day for ${months} month(s)`);
 			const start_date = new Date();
 			const end_date = new Date();
 			end_date.setDate(end_date.getDate() + (months * 30));
@@ -603,6 +718,8 @@ export class PaymentsService {
 				end_date,
 				30
 			);
+
+			this.logger.info(`Seat subscription created successfully: ${seat._id}, valid from ${start_date.toISOString()} to ${end_date.toISOString()}`);
 
 			// Record payment transaction
 			const sessionLabel = sessions_per_day === -1 ? 'unlimited' : sessions_per_day;
@@ -622,12 +739,22 @@ export class PaymentsService {
 					months,
 					batch_id,
 					batch_name,
-					payment_intent_id,
+					seat_id: seat._id,
+					start_date: start_date.toISOString(),
+					end_date: end_date.toISOString(),
+					pricing_breakdown: pricing.breakdown,
+					per_candidate: pricing.per_candidate,
+					total: pricing.total,
+					payment_intent_id: paymentIntent.id,
 					charge_details: paymentIntent
 				}
 			};
 
+			this.logger.info(`Recording payment transaction for partner ${partner_id}: $${payment_data.amount}`);
 			const payment_record = await this.paymentsRepository.RecordPaymentTransaction(payment_data);
+			this.logger.info(`Payment transaction recorded: ${payment_record._id}`);
+
+			this.logger.info(`Seat purchase completed successfully for partner ${partner_id} - Seat: ${seat._id}, Batch: ${batch_id}, Payment: ${payment_record._id}`);
 
 			return {
 				seat,
@@ -692,20 +819,18 @@ export class PaymentsService {
 			}
 
 			// Create or get batch
+			// Create batch - must be unique per partner
 			let batch;
 			try {
 				batch = await this.candidatesRepository.createBatch(partner_id, batch_name.trim());
-				this.logger.info(`Created new batch: ${batch._id} for seat purchase`);
+				this.logger.info(`Created new batch: ${batch._id} (${batch_name}) for partner ${partner_id}`);
 			} catch (error: any) {
-				// If batch already exists (duplicate key error), fetch it
 				if (error.code === 11000) {
-					const batches = await this.candidatesRepository.getAllBatchesByPartnerId(partner_id);
-					batch = batches.find(b => b.batch_name === batch_name.trim());
-					if (!batch) {
-						throw new ApiError(400, 'Batch name already exists but could not be retrieved');
-					}
-					this.logger.info(`Using existing batch: ${batch._id} for seat purchase`);
+					// Duplicate batch name for this partner
+					this.logger.error(`Duplicate batch name '${batch_name}' for partner ${partner_id}`);
+					throw new ApiError(400, `A batch with the name '${batch_name}' already exists. Please choose a different batch name.`);
 				} else {
+					this.logger.error(`Error creating batch: ${error.message}`);
 					throw error;
 				}
 			}
@@ -726,12 +851,24 @@ export class PaymentsService {
 			if (!partner_profile.payments || !partner_profile.payments.length) {
 				throw new ApiError(400, 'No payment profile found. Please add a payment method first.');
 			}
-			const stripe_customer_id = partner_profile.payments[0].stripe_customer_id;
+			const stripe_customer_id = partner_profile.payments[0].payment_customer_id;
 
 			// charge partner
 			const charge = await DebitCustomerCard(stripe_customer_id, payment_method_id, pricing.total);
 			if (!charge || charge.status !== 'succeeded') {
 				throw new ApiError(400, 'Payment failed');
+			}
+
+			// Mark payment method setup flag on dashboard
+			try {
+				const partner = await this.partnerRepository.findById(partner_id);
+				if (partner && !partner.payment_method_setup) {
+					await this.partnerRepository.markPaymentMethodSetup(partner_id);
+					this.logger.info(`Marked payment method setup complete for partner ${partner_id}`);
+				}
+			} catch (error: any) {
+				this.logger.error(`Error marking payment method setup: ${error.message}`);
+				// Don't fail the transaction if this fails
 			}
 
 			// create seat record
@@ -930,7 +1067,7 @@ export class PaymentsService {
 				throw new ApiError(400, 'No payment profile found. Please add a payment method first.');
 			}
 			
-			const stripe_customer_id = partner_profile.payments[0].stripe_customer_id;
+			const stripe_customer_id = partner_profile.payments[0].payment_customer_id;
 			
 			// Process the payment
 			const charge = await DebitCustomerCard(

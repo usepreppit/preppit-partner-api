@@ -220,18 +220,21 @@ export class PaymentsController {
     async ConfirmSeatPurchase(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const partner_id = req.curr_user?._id?.toString() as string;
-            const { payment_intent_id, batch_name } = req.body;
+            const { batch_name, payment_method_id, seat_count, sessions_per_day, months } = req.body;
 
-            if (!payment_intent_id || !batch_name) {
-                ApiResponse.badRequest('payment_intent_id and batch_name are required').send(res);
+            if (!batch_name || !payment_method_id || !seat_count || !sessions_per_day || !months) {
+                ApiResponse.badRequest('batch_name, payment_method_id, seat_count, sessions_per_day, and months are required').send(res);
                 return;
             }
 
             try {
                 const result = await this.paymentService.confirmSeatPurchase(
                     partner_id,
-                    payment_intent_id,
-                    batch_name
+                    batch_name,
+                    payment_method_id,
+                    seat_count,
+                    sessions_per_day,
+                    months
                 );
                 ApiResponse.created(result, 'Seat purchase confirmed successfully').send(res);
             } catch (error) {
