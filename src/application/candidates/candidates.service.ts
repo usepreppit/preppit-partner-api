@@ -37,55 +37,76 @@ export class CandidatesService {
 
     async createCandidate(partner_id: string, data: CreateCandidateDTO): Promise<IUser> {
         try {
-            // Verify batch exists and belongs to partner
-            const batch = await this.candidatesRepository.getBatchById(data.batch_id);
-            if (!batch) {
-                throw new ValidationError('Batch not found');
-            }
-            if (batch.partner_id.toString() !== partner_id) {
-                throw new ValidationError('Batch does not belong to this partner');
-            }
+            // If batch_id is provided, verify it exists and belongs to partner
+            if (data.batch_id) {
+                const batch = await this.candidatesRepository.getBatchById(data.batch_id);
+                if (!batch) {
+                    throw new ValidationError('Batch not found');
+                }
+                if (batch.partner_id.toString() !== partner_id) {
+                    throw new ValidationError('Batch does not belong to this partner');
+                }
 
-            // Check if candidate already exists in this batch
-            const exists = await this.candidatesRepository.checkPartnerCandidateExists(
-                partner_id,
-                data.batch_id,
-                data.email
-            );
-            if (exists) {
-                throw new ValidationError('Candidate with this email already exists in this batch');
+                // Check if candidate already exists in this batch
+                const exists = await this.candidatesRepository.checkPartnerCandidateExists(
+                    partner_id,
+                    data.batch_id,
+                    data.email
+                );
+                if (exists) {
+                    throw new ValidationError('Candidate with this email already exists in this batch');
+                }
+            } else {
+                // No batch provided - check if candidate already exists for this partner (any batch or no batch)
+                const exists = await this.candidatesRepository.checkPartnerCandidateExistsAny(
+                    partner_id,
+                    data.email
+                );
+                if (exists) {
+                    throw new ValidationError('Candidate with this email already exists for this partner');
+                }
             }
 
             // Seat check: determine if candidate should be paid for
-            const seat = await this.candidatesRepository.getSeatByBatch(partner_id, data.batch_id);
             let isPaidFor = false;
-            let assignedBatchId = data.batch_id;
-            
-            if (seat && seat.is_active) {
-                const availableSeats = (seat.seat_count || 0) - (seat.seats_assigned || 0);
+            let assignedBatchId: string | null = data.batch_id || null;
+            let seat: any = null;
+
+            if (data.batch_id) {
+                // Batch provided - check for seat availability
+                seat = await this.candidatesRepository.getSeatByBatch(partner_id, data.batch_id);
                 
-                if (availableSeats > 0) {
-                    // Seats available - candidate will be paid for and added to batch
-                    isPaidFor = true;
-                    // Reserve a seat (increment) before creating candidate to avoid race conditions
-                    try {
-                        await this.candidatesRepository.incrementSeatsAssigned(seat._id.toString(), 1);
-                        this.logger.info(`Reserved seat for candidate in batch ${data.batch_id}. Available seats: ${availableSeats - 1}`);
-                    } catch (incErr) {
-                        this.logger.error('Failed to reserve seat before creating candidate', incErr);
-                        throw new ApiError(500, 'Failed to reserve seat');
+                if (seat && seat.is_active) {
+                    const availableSeats = (seat.seat_count || 0) - (seat.seats_assigned || 0);
+                    
+                    if (availableSeats > 0) {
+                        // Seats available - candidate will be paid for and added to batch
+                        isPaidFor = true;
+                        // Reserve a seat (increment) before creating candidate to avoid race conditions
+                        try {
+                            await this.candidatesRepository.incrementSeatsAssigned(seat._id.toString(), 1);
+                            this.logger.info(`Reserved seat for candidate in batch ${data.batch_id}. Available seats: ${availableSeats - 1}`);
+                        } catch (incErr) {
+                            this.logger.error('Failed to reserve seat before creating candidate', incErr);
+                            throw new ApiError(500, 'Failed to reserve seat');
+                        }
+                    } else {
+                        // No seats available - candidate will be unpaid and not added to batch
+                        isPaidFor = false;
+                        assignedBatchId = null;
+                        this.logger.info(`No seats available in batch ${data.batch_id}. Creating unpaid candidate.`);
                     }
                 } else {
-                    // No seats available - candidate will be unpaid and not added to batch
+                    // No active seat subscription - candidate is unpaid and not added to batch
                     isPaidFor = false;
-                    assignedBatchId = null as any; // Don't assign to batch
-                    this.logger.info(`No seats available in batch ${data.batch_id}. Creating unpaid candidate.`);
+                    assignedBatchId = null;
+                    this.logger.info(`No active seat subscription for batch ${data.batch_id}. Creating unpaid candidate.`);
                 }
             } else {
-                // No active seat subscription - candidate is unpaid and not added to batch
+                // No batch provided - candidate is unpaid by default
                 isPaidFor = false;
-                assignedBatchId = null as any;
-                this.logger.info(`No active seat subscription for batch ${data.batch_id}. Creating unpaid candidate.`);
+                assignedBatchId = null;
+                this.logger.info('No batch provided. Creating unpaid candidate.');
             }
 
             let result: { user: IUser; partnerCandidate: any };

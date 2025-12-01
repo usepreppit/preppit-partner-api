@@ -3,7 +3,7 @@ export interface CreateBatchDTO {
 }
 
 export interface CreateCandidateDTO {
-    batch_id: string;
+    batch_id?: string; // Optional - candidates without batch are unpaid by default
     firstname: string;
     lastname: string;
     email: string;

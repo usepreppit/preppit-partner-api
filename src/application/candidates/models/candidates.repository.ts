@@ -114,6 +114,21 @@ export class CandidatesRepository {
         return !!relationship;
     }
 
+    async checkPartnerCandidateExistsAny(
+        partner_id: string,
+        email: string
+    ): Promise<boolean> {
+        const user = await this.userModel.findOne({ email }).lean();
+        if (!user) return false;
+
+        const relationship = await this.partnerCandidateModel.findOne({
+            partner_id: new mongoose.Types.ObjectId(partner_id),
+            candidate_id: user._id
+        }).lean();
+
+        return !!relationship;
+    }
+
     async checkMultiplePartnerCandidatesExist(
         partner_id: string,
         batch_id: string,

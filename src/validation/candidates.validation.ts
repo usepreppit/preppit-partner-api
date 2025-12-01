@@ -17,14 +17,14 @@ export const validate_create_batch = (data: any, callback: Function) => {
 
 export const validate_create_candidate = (data: any, callback: Function) => {
     const rules = {
-        batch_id: 'required|string',
+        batch_id: 'string', // Optional - candidates without batch are unpaid
         firstname: 'required|string|min:2|max:50',
         lastname: 'required|string|min:2|max:50',
         email: 'required|email'
     };
 
     const customMessages = {
-        'required.batch_id': 'Batch ID is required',
+        'string.batch_id': 'Batch ID must be a string',
         'required.firstname': 'First name is required',
         'min.firstname': 'First name must be at least 2 characters',
         'max.firstname': 'First name cannot exceed 50 characters',
