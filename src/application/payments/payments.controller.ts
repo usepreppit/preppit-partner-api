@@ -175,6 +175,28 @@ export class PaymentsController {
         }
     }
 
+    async DeletePaymentMethod(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const partner_id = req.curr_user?._id?.toString() as string;
+            const { payment_method_id } = req.params;
+
+            if (!payment_method_id) {
+                ApiResponse.badRequest('payment_method_id is required').send(res);
+                return;
+            }
+
+            try {
+                const result = await this.paymentService.deletePaymentMethod(partner_id, payment_method_id);
+                ApiResponse.ok(result, 'Payment method deleted successfully').send(res);
+            } catch (error) {
+                this.logger.error('Error deleting payment method', error);
+                next(error);
+            }
+        } catch (error) {
+            next(error);
+        }
+    }
+
     async CreatePaymentIntent(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
             const partner_id = req.curr_user?._id?.toString() as string;

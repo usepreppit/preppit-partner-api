@@ -24,6 +24,7 @@ export default (app: Router) => {
     route.get('/payment-methods', paymentsController.GetPaymentMethods.bind(paymentsController));
     route.post('/payment-methods/save', paymentsController.SaveCard.bind(paymentsController));
     route.post('/payment-methods/default', paymentsController.SetDefaultPaymentMethod.bind(paymentsController));
+    route.delete('/payment-methods/:payment_method_id', paymentsController.DeletePaymentMethod.bind(paymentsController));
     route.get('/pricing', paymentsController.GetPricing.bind(paymentsController));
     route.get('/seats/pricing', paymentsController.GetSeatPricing.bind(paymentsController));
     route.post('/seats/payment-intent', paymentsController.CreatePaymentIntent.bind(paymentsController));

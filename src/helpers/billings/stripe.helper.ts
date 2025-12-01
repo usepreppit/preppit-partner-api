@@ -197,6 +197,16 @@ export async function GetCustomerFromPaymentMethod(payment_method: string, user_
     }
 }
 
+export async function detachPaymentMethod(payment_method_id: string) {
+    try {
+        const paymentMethod = await stripe.paymentMethods.detach(payment_method_id);
+        return paymentMethod;
+    } catch (error) {
+        console.error('Error detaching payment method:', error);
+        throw new Error(`Failed to detach payment method: ${error}`);
+    }
+}
+
 export async function CheckValidityOfPaymentMethod(payment_method: string) {
     try {
         const paymentMethod = await stripe.paymentMethods.retrieve(payment_method);

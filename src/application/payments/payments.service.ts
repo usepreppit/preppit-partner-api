@@ -1,7 +1,7 @@
 import { inject, injectable } from 'inversify';
 import { Logger } from '../../startup/logger';
 import { ApiError } from '../../helpers/error.helper';
-import { SetupStripeIntent, createStripeCustomer, getDefaultCard, getCustomerCards, addCardToCustomer, GetStripeCustomer, DebitCustomerCard, CreatePaymentIntent } from '../../helpers/billings/stripe.helper';
+import { SetupStripeIntent, createStripeCustomer, getDefaultCard, getCustomerCards, addCardToCustomer, GetStripeCustomer, DebitCustomerCard, CreatePaymentIntent, detachPaymentMethod } from '../../helpers/billings/stripe.helper';
 import { PartnerRepository } from '../users/models/partner.repository';
 import { PaymentsRepository } from './models/payments.repository';
 import { CandidatesRepository } from '../candidates/models/candidates.repository';
@@ -422,16 +422,22 @@ export class PaymentsService {
 			
 			// Get partner's saved cards from Stripe
 			const stripe_customer_id = partner_profile.payments[0].payment_customer_id;
-			const cards = await getCustomerCards(stripe_customer_id, 20); // Get up to 20 cards
+			const stripeCards = await getCustomerCards(stripe_customer_id, 20); // Get up to 20 cards
 			
 			// Get default payment method
 			const default_payment_method = partner_profile.payments[0]?.payment_customer_details?.invoice_settings?.default_payment_method || null;
+			
+			// Add is_default flag to each card
+			const cards = (stripeCards || []).map((card: any) => ({
+				...card,
+				is_default: card.id === default_payment_method
+			}));
 			
 			// Get auto-renew preference (default to false if not set)
 			const auto_renew = partner_profile.auto_renew_subscription || false;
 			
 			return { 
-				cards: cards || [], 
+				cards, 
 				auto_renew,
 				default_payment_method,
 				stripe_customer_id
@@ -452,17 +458,57 @@ export class PaymentsService {
 			}
 
 			const stripe_customer_id = partner_profile.payments[0].payment_customer_id;
+			const payment_profile_id = partner_profile.payments[0]._id;
 
 			// Set as default in Stripe
 			await addCardToCustomer(stripe_customer_id, payment_method_id, true);
 
-			// Update local record
-			await this.paymentsRepository.UpdatePaymentProfileByPaymentMethod(partner_id, payment_method_id);
+			// Update local record with the new default payment method
+			await this.paymentsRepository.UpdatePaymentProfileByPaymentMethod(payment_profile_id, payment_method_id);
 
 			return { success: true, default_payment_method: payment_method_id };
 		} catch (error) {
 			this.logger.error(`Error setting default payment method: ${error}`);
 			throw new ApiError(400, 'Error setting default payment method', error);
+		}
+	}
+
+	async deletePaymentMethod(partner_id: string, payment_method_id: string): Promise<any> {
+		try {
+			// Get partner payment profile
+			const partner_profile = await this.partnerRepository.getFullPartnerDetails(partner_id);
+			
+			if (!partner_profile.payments || !partner_profile.payments.length) {
+				throw new ApiError(400, 'No payment profile found.');
+			}
+
+			const stripe_customer_id = partner_profile.payments[0].payment_customer_id;
+
+			// Get customer's current default payment method
+			const customer = await GetStripeCustomer(stripe_customer_id);
+			if (!customer || (customer as any).deleted) {
+				throw new ApiError(400, 'Stripe customer not found');
+			}
+
+			const defaultPaymentMethod = (customer as any).invoice_settings?.default_payment_method;
+
+			// Prevent deletion of default payment method
+			if (defaultPaymentMethod === payment_method_id) {
+				throw new ApiError(400, 'Cannot delete the default payment method. Please set another card as default first.');
+			}
+
+			// Detach payment method from Stripe customer
+			await detachPaymentMethod(payment_method_id);
+
+			this.logger.info(`Payment method ${payment_method_id} deleted for partner ${partner_id}`);
+
+			return { success: true, message: 'Payment method deleted successfully' };
+		} catch (error) {
+			this.logger.error(`Error deleting payment method: ${error}`);
+			if (error instanceof ApiError) {
+				throw error;
+			}
+			throw new ApiError(400, 'Error deleting payment method', error);
 		}
 	}
 
