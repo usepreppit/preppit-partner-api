@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { container } from '../../startup/di/container';
 import { UtilsController } from './utils.controller';
-// import { authMiddleware } from '../../middlewares/auth.middleware';
+import { authMiddleware } from '../../middlewares/auth.middleware';
+import { validate_send_feedback } from '../../validation/utils.validation';
+import { sendError } from '../../helpers/validator.helper';
 
 const route = Router();
 
@@ -17,4 +19,19 @@ export default (app: Router) => {
     
     // Available exams endpoint for partner onboarding
     route.get('/available-exams', utilsController.GetExamTypes.bind(utilsController));
+
+    // Feedback endpoint
+    route.post(
+        '/feedback',
+        authMiddleware,
+        (req, res, next) => {
+            validate_send_feedback(req.body, (err: any, status: boolean) => {
+                if (!status) {
+                    return sendError(res, err);
+                }
+                next();
+            });
+        },
+        utilsController.SendFeedback.bind(utilsController)
+    );
 };

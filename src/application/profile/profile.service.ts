@@ -143,7 +143,7 @@ export class ProfileService {
 		}
 	}
 
-	async UpdateProfile(user_id: string, user_details: object, account_type?: 'admin' | 'partner') {
+	async UpdateProfile(user_id: string, user_details: any, account_type?: 'admin' | 'partner') {
 		try {
 			let curr_user: any = null;
 			
@@ -160,15 +160,62 @@ export class ProfileService {
 				throw new ValidationError("Invalid user");
 			}
 
-			//check if the current user password matches the old password entered
-			// Update profile in appropriate table
-			if (account_type === 'admin') {
-				await this.adminRepository.updateById(user_id, user_details);
-			} else {
-				await this.partnerRepository.updateById(user_id, user_details);
+			// Whitelist allowed fields for profile update
+			const allowedFields = [
+				'firstname',
+				'lastname',
+				'phone_number',
+				'country',
+				'organization_name',
+				'contact_person_name',
+				'contact_email',
+				'contact_phone',
+				'timezone',
+				'preferred_currency'
+			];
+
+			// Filter only allowed fields from user_details
+			const sanitizedDetails: any = {};
+			for (const field of allowedFields) {
+				if (user_details[field] !== undefined) {
+					sanitizedDetails[field] = user_details[field];
+				}
 			}
 
-			return { message: 'Profile updated successfully' };
+			// Ensure we have at least one field to update
+			if (Object.keys(sanitizedDetails).length === 0) {
+				throw new ValidationError('No valid fields provided for update');
+			}
+
+			// Update profile in appropriate table
+			if (account_type === 'admin') {
+				await this.adminRepository.updateById(user_id, sanitizedDetails);
+			} else {
+				await this.partnerRepository.updateById(user_id, sanitizedDetails);
+			}
+
+			// Get updated user data
+			const updatedUser = account_type === 'admin' 
+				? await this.adminRepository.findById(user_id)
+				: await this.partnerRepository.findById(user_id);
+
+			return { 
+				message: 'Profile updated successfully',
+				user: {
+					_id: updatedUser._id,
+					firstname: updatedUser.firstname,
+					lastname: updatedUser.lastname,
+					email: updatedUser.email,
+					phone_number: updatedUser.phone_number,
+					country: updatedUser.country,
+					organization_name: updatedUser.organization_name,
+					contact_person_name: updatedUser.contact_person_name,
+					contact_email: updatedUser.contact_email,
+					contact_phone: updatedUser.contact_phone,
+					timezone: updatedUser.timezone,
+					preferred_currency: updatedUser.preferred_currency
+				}
+			};
 		} catch (error) {
 			this.logger.error(`Error Updating user profile: ${error}`);
 			throw new ApiError(400, 'Error Updating user profile', error);

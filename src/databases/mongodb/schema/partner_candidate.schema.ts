@@ -20,7 +20,7 @@ const PartnerCandidateSchema: Schema = new Schema(
         batch_id: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'CandidateBatch',
-            required: true,
+            required: false, // Optional - candidates without batch are unpaid
             index: true
         },
         is_paid_for: {
@@ -46,7 +46,8 @@ const PartnerCandidateSchema: Schema = new Schema(
 );
 
 // Compound unique index: Same candidate cannot be in same batch twice
-PartnerCandidateSchema.index({ candidate_id: 1, batch_id: 1 }, { unique: true });
+// Sparse index allows multiple null batch_id values
+PartnerCandidateSchema.index({ candidate_id: 1, batch_id: 1 }, { unique: true, sparse: true });
 
 // Index for querying candidates by partner
 PartnerCandidateSchema.index({ partner_id: 1, candidate_id: 1 });

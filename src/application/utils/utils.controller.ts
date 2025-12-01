@@ -4,12 +4,14 @@ import { Logger } from '../../startup/logger';
 import { getAuthURL } from '../../helpers/thirdparty/googleapis.helper';
 import { ApiResponse } from '../../helpers/response.helper';
 import { ExamsService } from '../exams/exams.service';
+import { ResendEmailService } from '../../helpers/email/resend.helper';
 
 @injectable()
 export class UtilsController {
     constructor(
         @inject(Logger) private readonly logger: Logger,
         @inject(ExamsService) private readonly examService: ExamsService,
+        @inject(ResendEmailService) private readonly emailService: ResendEmailService,
     ) {}
 
     async GetGoogleAuthUrl(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -72,6 +74,41 @@ export class UtilsController {
             }, 'Available exams retrieved successfully').send(res);
         } catch (error) {
             this.logger.error('Error getting available exams:', error);
+            next(error);
+        }
+    }
+
+    async SendFeedback(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { subject, message } = req.body;
+            const user = req.curr_user;
+
+            this.logger.info(`Sending feedback from ${user?.email || 'Unknown user'}`);
+
+            // Build email HTML body
+            const htmlBody = `
+                <h2>New Feedback Received</h2>
+                <p><strong>From:</strong> ${user?.firstname || 'N/A'} ${user?.lastname || ''} (${user?.email || 'Anonymous'})</p>
+                <p><strong>User ID:</strong> ${user?._id || 'N/A'}</p>
+                <p><strong>Subject:</strong> ${subject}</p>
+                <hr>
+                <h3>Message:</h3>
+                <p>${message.replace(/\n/g, '<br>')}</p>
+                <hr>
+                <p><em>Sent at: ${new Date().toISOString()}</em></p>
+            `;
+
+            // Send email to debayo@usepreppit.com
+            await this.emailService.sendTransactionalEmail(
+                'debayo@usepreppit.com',
+                `Feedback: ${subject}`,
+                htmlBody
+            );
+
+            this.logger.info('Feedback email sent successfully');
+            ApiResponse.ok({ success: true }, 'Feedback sent successfully').send(res);
+        } catch (error) {
+            this.logger.error('Error sending feedback:', error);
             next(error);
         }
     }

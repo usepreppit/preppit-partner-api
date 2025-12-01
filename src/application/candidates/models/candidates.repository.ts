@@ -424,6 +424,42 @@ export class CandidatesRepository {
         ).lean();
     }
 
+    async assignCandidatesToBatch(
+        partner_id: string,
+        batch_id: string,
+        candidate_ids: string[]
+    ): Promise<{ updated: number; failed: string[] }> {
+        const failed: string[] = [];
+        let updated = 0;
+
+        for (const candidate_id of candidate_ids) {
+            try {
+                const result = await this.partnerCandidateModel.findOneAndUpdate(
+                    {
+                        partner_id: new mongoose.Types.ObjectId(partner_id),
+                        candidate_id: new mongoose.Types.ObjectId(candidate_id),
+                        batch_id: { $exists: false } // Only update if batch_id is null/undefined
+                    },
+                    { 
+                        batch_id: new mongoose.Types.ObjectId(batch_id),
+                        is_paid_for: true // Mark as paid when assigned to batch
+                    },
+                    { new: true }
+                ).lean();
+
+                if (result) {
+                    updated++;
+                } else {
+                    failed.push(candidate_id);
+                }
+            } catch (error) {
+                failed.push(candidate_id);
+            }
+        }
+
+        return { updated, failed };
+    }
+
     async updateCandidateInviteStatus(
         partner_candidate_id: string,
         invite_status: 'pending' | 'accepted' | 'expired'

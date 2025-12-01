@@ -3,7 +3,11 @@ import { container } from '../../startup/di/container';
 import { CandidatesController } from './candidates.controller';
 import { authMiddleware } from '../../middlewares/auth.middleware';
 import { requireOnboardingComplete } from '../../middlewares/onboarding.middleware';
-import { validate_create_batch, validate_create_candidate } from '../../validation/candidates.validation';
+import { 
+    validate_create_batch, 
+    validate_create_candidate, 
+    validate_assign_candidates_to_batch 
+} from '../../validation/candidates.validation';
 import { sendError } from '../../helpers/validator.helper';
 
 const route = Router();
@@ -77,6 +81,20 @@ export default (app: Router) => {
     route.patch(
         '/:candidate_id/mark-paid',
         candidatesController.MarkCandidateAsPaid.bind(candidatesController)
+    );
+
+    // Assign multiple candidates to a batch
+    route.post(
+        '/assign-to-batch',
+        (req, res, next) => {
+            validate_assign_candidates_to_batch(req.body, (err: any, status: boolean) => {
+                if (!status) {
+                    return sendError(res, err);
+                }
+                next();
+            });
+        },
+        candidatesController.AssignCandidatesToBatch.bind(candidatesController)
     );
 
     // Accept candidate invite (uses partner_candidate_id)

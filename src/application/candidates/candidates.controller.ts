@@ -3,7 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import { CandidatesService } from './candidates.service';
 import { Logger } from '../../startup/logger';
 import { ApiResponse } from '../../helpers/response.helper';
-import { CreateBatchDTO, CreateCandidateDTO } from './types/candidates.types';
+import { CreateBatchDTO, CreateCandidateDTO, AssignCandidatesToBatchDTO } from './types/candidates.types';
 
 @injectable()
 export class CandidatesController {
@@ -146,6 +146,23 @@ export class CandidatesController {
             }
         } catch (error) {
             this.logger.error('Error in MarkCandidateAsPaid:', error);
+            next(error);
+        }
+    }
+
+    async AssignCandidatesToBatch(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const partner_id = req.curr_user?._id?.toString() as string;
+            const assignmentData: AssignCandidatesToBatchDTO = req.body;
+
+            try {
+                const result = await this.candidatesService.assignCandidatesToBatch(partner_id, assignmentData);
+                ApiResponse.ok(result, result.message).send(res);
+            } catch (error) {
+                next(error);
+            }
+        } catch (error) {
+            this.logger.error('Error in AssignCandidatesToBatch:', error);
             next(error);
         }
     }

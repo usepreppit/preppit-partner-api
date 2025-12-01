@@ -14,6 +14,11 @@ export interface UploadCandidatesCSVDTO {
     file: any; // Multer file object
 }
 
+export interface AssignCandidatesToBatchDTO {
+    batch_id: string;
+    candidate_ids: string[];
+}
+
 export interface CandidateWithBatch {
     _id: string;
     firstname: string;

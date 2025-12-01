@@ -7,7 +7,8 @@ import {
     CreateBatchDTO,
     CreateCandidateDTO,
     CandidatesListResponse,
-    CSVUploadResult
+    CSVUploadResult,
+    AssignCandidatesToBatchDTO
 } from './types/candidates.types';
 import { ICandidateBatch } from '../../databases/mongodb/model/candidate_batch.model';
 import { IUser } from '../users/types/user.types';
@@ -509,6 +510,77 @@ export class CandidatesService {
             }
             this.logger.error('Error marking candidate as paid:', error);
             throw new ApiError(500, 'Failed to update payment status');
+        }
+    }
+
+    async assignCandidatesToBatch(partner_id: string, data: AssignCandidatesToBatchDTO): Promise<any> {
+        try {
+            // Verify batch exists and belongs to partner
+            const batch = await this.candidatesRepository.getBatchById(data.batch_id);
+            if (!batch) {
+                throw new ValidationError('Batch not found');
+            }
+            if (batch.partner_id.toString() !== partner_id) {
+                throw new ValidationError('Batch does not belong to this partner');
+            }
+
+            // Validate candidate_ids array
+            if (!data.candidate_ids || data.candidate_ids.length === 0) {
+                throw new ValidationError('At least one candidate ID is required');
+            }
+
+            // Check seat availability
+            const seat = await this.candidatesRepository.getSeatByBatch(partner_id, data.batch_id);
+            if (!seat || !seat.is_active) {
+                throw new ValidationError('No active seat subscription found for this batch');
+            }
+
+            const availableSeats = (seat.seat_count || 0) - (seat.seats_assigned || 0);
+            if (availableSeats < data.candidate_ids.length) {
+                throw new ValidationError(
+                    `Insufficient seats available. Requested: ${data.candidate_ids.length}, Available: ${availableSeats}`
+                );
+            }
+
+            // Verify all candidates exist and belong to partner (and have no batch)
+            const candidates = await this.candidatesRepository.getCandidatesByIds(data.candidate_ids);
+            if (candidates.length !== data.candidate_ids.length) {
+                throw new ValidationError('One or more candidates not found');
+            }
+
+            // Perform batch assignment
+            const result = await this.candidatesRepository.assignCandidatesToBatch(
+                partner_id,
+                data.batch_id,
+                data.candidate_ids
+            );
+
+            // Update seats_assigned count
+            if (result.updated > 0) {
+                await this.candidatesRepository.incrementSeatsAssigned(seat._id.toString(), result.updated);
+            }
+
+            this.logger.info(
+                `Assigned ${result.updated} candidates to batch ${data.batch_id} for partner ${partner_id}`
+            );
+
+            return {
+                batch_id: data.batch_id,
+                batch_name: batch.batch_name,
+                total_requested: data.candidate_ids.length,
+                successfully_assigned: result.updated,
+                failed: result.failed.length,
+                failed_candidate_ids: result.failed,
+                message: result.failed.length > 0
+                    ? `${result.updated} candidates assigned successfully. ${result.failed.length} failed (already assigned to a batch).`
+                    : `All ${result.updated} candidates assigned successfully to batch.`
+            };
+        } catch (error: any) {
+            if (error instanceof ValidationError || error instanceof ApiError) {
+                throw error;
+            }
+            this.logger.error('Error assigning candidates to batch:', error);
+            throw new ApiError(500, 'Failed to assign candidates to batch');
         }
     }
 
