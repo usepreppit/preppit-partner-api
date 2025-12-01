@@ -151,7 +151,7 @@ export class DashboardService {
 				title: 'Add Candidates / Users',
 				description: 'Start adding candidates to your platform to begin managing their exam preparation',
 				status: partnerStatus.has_added_candidates ? 'completed' : 'pending',
-				action_url: '/candidates/add',
+				action_url: '/candidates',
 				completed_at: partnerStatus.first_candidate_added_at
 			},
 			{
