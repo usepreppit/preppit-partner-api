@@ -121,7 +121,8 @@ export class CandidatesService {
                     data.firstname,
                     data.lastname,
                     data.email,
-                    isPaidFor
+                    isPaidFor,
+                    seat && seat.is_active ? seat._id.toString() : null
                 );
             } catch (createErr) {
                 // If we reserved a seat earlier, rollback the reserved seat

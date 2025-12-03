@@ -5,6 +5,7 @@ import { IUser } from '../../users/types/user.types';
 import { ICandidateBatch } from '../../../databases/mongodb/model/candidate_batch.model';
 import { IPartnerCandidate } from '../../../databases/mongodb/model/partner_candidate.model';
 import { CandidateWithBatch, BatchWithCandidateCount } from '../types/candidates.types';
+import { SubscriptionRepository } from '../../subscriptions/models/subscriptions.repository';
 
 @injectable()
 export class CandidatesRepository {
@@ -13,6 +14,7 @@ export class CandidatesRepository {
         @inject('CandidateBatchModel') private candidateBatchModel: Model<ICandidateBatch>,
         @inject('PartnerCandidateModel') private partnerCandidateModel: Model<IPartnerCandidate>,
         @inject('SeatModel') private seatModel: Model<any>,
+        @inject(SubscriptionRepository) private subscriptionRepository: SubscriptionRepository,
     ) {}
 
     async createBatch(partner_id: string, batch_name: string): Promise<ICandidateBatch> {
@@ -60,7 +62,8 @@ export class CandidatesRepository {
         firstname: string,
         lastname: string,
         email: string,
-        is_paid_for: boolean = false
+        is_paid_for: boolean = false,
+        seat_id: string | null = null
     ): Promise<{ user: IUser; partnerCandidate: IPartnerCandidate }> {
         // Check if user already exists
         let user = await this.userModel.findOne({ email }).lean();
@@ -93,6 +96,22 @@ export class CandidatesRepository {
         }
 
         const partnerCandidate = await this.partnerCandidateModel.create(partnerCandidateData);
+
+        // Create subscription if candidate is paid for and has a batch
+        if (is_paid_for && batch_id) {
+            const startDate = new Date();
+            const endDate = new Date(startDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+            await this.subscriptionRepository.createPartnerSubscription({
+                user_id: user._id.toString(),
+                partner_id,
+                batch_id,
+                seat_subscription_id: seat_id || undefined,
+                subscription_start_date: startDate,
+                subscription_end_date: endDate,
+                daily_sessions: 5 // Default daily sessions
+            });
+        }
 
         return { user: user as IUser, partnerCandidate };
     }
@@ -399,6 +418,29 @@ export class CandidatesRepository {
         if (seat_id && availableSeats > 0) {
             const paidCount = Math.min(availableSeats, candidatesData.length);
             await this.incrementSeatsAssigned(seat_id, paidCount);
+        }
+
+        // Create subscriptions for paid candidates
+        const paidCandidatesData = candidatesData.slice(0, availableSeats);
+        if (paidCandidatesData.length > 0 && paidCandidatesData[0] && paidCandidatesData[0].batch_id) {
+            const subscriptionsData = paidCandidatesData.map(data => {
+                const user = existingUserMap.get(data.email)!;
+                // Default to 30 days subscription
+                const startDate = new Date();
+                const endDate = new Date(startDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+                return {
+                    user_id: user._id.toString(),
+                    partner_id: data.partner_id,
+                    batch_id: data.batch_id,
+                    seat_subscription_id: seat_id || undefined,
+                    subscription_start_date: startDate,
+                    subscription_end_date: endDate,
+                    daily_sessions: 5 // Default daily sessions for partner subscriptions
+                };
+            });
+
+            await this.subscriptionRepository.createBulkPartnerSubscriptions(subscriptionsData);
         }
         
         // Combine results
