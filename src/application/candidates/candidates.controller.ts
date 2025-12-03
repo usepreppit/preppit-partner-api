@@ -90,15 +90,10 @@ export class CandidatesController {
                 return;
             }
 
-            const file = (req.files as any).file;
-
-            if (!batch_id) {
-                ApiResponse.badRequest('batch_id is required').send(res);
-                return;
-            }
+            // const file = (req.files as any).file;
 
             try {
-                const result = await this.candidatesService.uploadCandidatesCSV(partner_id, batch_id, file);
+                const result = await this.candidatesService.uploadCandidatesCSV(partner_id, batch_id, req);
 
                 ApiResponse.ok(result, 'CSV upload completed').send(res);
             } catch (error) {

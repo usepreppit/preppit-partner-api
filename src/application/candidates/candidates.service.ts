@@ -13,6 +13,9 @@ import {
 import { ICandidateBatch } from '../../databases/mongodb/model/candidate_batch.model';
 import { IUser } from '../users/types/user.types';
 import { uploadBufferToCFBucket } from '../../helpers/upload_to_s3.helper';
+import { getFileBreakdown } from '../../helpers/file.helper';
+import fs from 'fs';
+import csvParser from 'csv-parser';
 
 @injectable()
 export class CandidatesService {
@@ -153,19 +156,25 @@ export class CandidatesService {
 
     async uploadCandidatesCSV(
         partner_id: string,
-        batch_id: string,
-        file: any // express-fileupload file object
+        batch_id: string | undefined,
+        req: any // express-fileupload file object
     ): Promise<CSVUploadResult> {
         try {
-            // Verify batch exists and belongs to partner
-            const batch = await this.candidatesRepository.getBatchById(batch_id);
-            if (!batch) {
-                throw new ValidationError('Batch not found');
-            }
-            if (batch.partner_id.toString() !== partner_id) {
-                throw new ValidationError('Batch does not belong to this partner');
-            }
+            let batch: any = null;
+            
+             const { file_path } = getFileBreakdown(req);
 
+            // If batch_id is provided, verify it exists and belongs to partner
+            if (batch_id) {
+                batch = await this.candidatesRepository.getBatchById(batch_id);
+                if (!batch) {
+                    throw new ValidationError('Batch not found');
+                }
+                if (batch.partner_id.toString() !== partner_id) {
+                    throw new ValidationError('Batch does not belong to this partner');
+                }
+            }
+            const file = (req.files as any).file;
             // Validate file
             if (!file) {
                 throw new ValidationError('No file uploaded');
@@ -194,203 +203,275 @@ export class CandidatesService {
                 candidates: []
             };
 
-            // Parse CSV from buffer
-            const fileContent = file.data.toString('utf-8');
-            const lines = fileContent.split('\n').filter((line: string) => line.trim() !== '');
-            
-            if (lines.length < 2) {
-                throw new ValidationError('CSV file must contain a header row and at least one data row');
-            }
+            // Parse CSV using csv-parser with improved validation
+            return new Promise<CSVUploadResult>((resolve, reject) => {
+                const parsedRows: Array<{
+                    rowNumber: number;
+                    firstname: string;
+                    lastname: string;
+                    email: string;
+                    isValid: boolean;
+                    errors?: Record<string, string[]>;
+                }> = [];
 
-            // Parse header
-            const header = lines[0];
-            if (!header) {
-                throw new ValidationError('CSV file is empty or malformed');
-            }
-            const headers = header.split(',').map((h: string) => h.trim().toLowerCase());
-            const firstnameIndex = headers.indexOf('firstname');
-            const lastnameIndex = headers.indexOf('lastname');
-            const emailIndex = headers.indexOf('email');
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                let rowNumber = 0;
+                const emailsInFile: string[] = []; // Track emails within the CSV for duplicate detection
+                let headerError: string | null = null;
 
-            if (firstnameIndex === -1 || lastnameIndex === -1 || emailIndex === -1) {
-                throw new ValidationError('CSV must contain columns: firstname, lastname, email');
-            }
+                // Read directly from the uploaded file path
+                this.logger.info(`Reading CSV from file path: ${file_path}`);
+                
+                const dataStream = fs.createReadStream(file_path).pipe(csvParser({
+                    mapHeaders: ({ header }: { header: string }) => header.toLowerCase().trim(),
+                    strict: false
+                }));
 
-            results.total_rows = lines.length - 1;
+                // Validate headers
+                dataStream.on('headers', (headers: string[]) => {
+                    this.logger.info(`CSV headers received: ${headers.join(', ')}`);
+                    const requiredHeaders = ['firstname', 'lastname', 'email'];
+                    const normalizedHeaders = headers.map(h => h.toLowerCase().trim());
+                    const missingHeaders = requiredHeaders.filter(h => !normalizedHeaders.includes(h));
 
-            // First pass: Parse and validate all rows
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            const parsedRows: Array<{
-                rowNumber: number;
-                firstname: string;
-                lastname: string;
-                email: string;
-                isValid: boolean;
-                error?: string;
-            }> = [];
-
-            for (let i = 1; i < lines.length; i++) {
-                const rowNumber = i + 1;
-                const line = lines[i];
-                if (!line) continue;
-
-                const values = line.split(',').map((v: string) => v.trim());
-                const firstname = values[firstnameIndex] || '';
-                const lastname = values[lastnameIndex] || '';
-                const email = values[emailIndex] || '';
-
-                let isValid = true;
-                let error = '';
-
-                // Validate required fields
-                if (!firstname || !lastname || !email) {
-                    isValid = false;
-                    error = 'Missing required fields (firstname, lastname, email)';
-                } else if (!emailRegex.test(email)) {
-                    isValid = false;
-                    error = 'Invalid email format';
-                }
-
-                parsedRows.push({
-                    rowNumber,
-                    firstname,
-                    lastname,
-                    email,
-                    isValid,
-                    error
+                    if (missingHeaders.length > 0) {
+                        headerError = `CSV file is missing required headers: ${missingHeaders.join(', ')}`;
+                        this.logger.error(headerError);
+                    }
                 });
-            }
 
-            // Second pass: Check for existing emails in this batch (single DB call)
-            const validRows = parsedRows.filter(row => row.isValid);
-            const emailsToCheck = validRows.map(row => row.email);
-            const existingInBatch = await this.candidatesRepository.checkMultiplePartnerCandidatesExist(
-                partner_id,
-                batch_id,
-                emailsToCheck
-            );
-
-            // Separate valid candidates from those with errors
-            const candidatesToCreate: Array<{
-                partner_id: string;
-                batch_id: string;
-                firstname: string;
-                lastname: string;
-                email: string;
-            }> = [];
-
-            for (const row of parsedRows) {
-                if (!row.isValid) {
-                    results.failed++;
-                    results.errors.push({
-                        row: row.rowNumber,
-                        email: row.email || 'N/A',
-                        error: row.error!
-                    });
-                } else if (existingInBatch.get(row.email)) {
-                    results.failed++;
-                    results.errors.push({
-                        row: row.rowNumber,
-                        email: row.email,
-                        error: 'Candidate already exists in this batch'
-                    });
-                } else {
-                    candidatesToCreate.push({
-                        partner_id,
-                        batch_id,
-                        firstname: row.firstname,
-                        lastname: row.lastname,
-                        email: row.email
-                    });
-                }
-            }
-
-            // Third pass: Check seat availability and bulk create candidates
-            if (candidatesToCreate.length > 0) {
-                try {
-                    // Get seat information for the batch
-                    const seat = await this.candidatesRepository.getSeatByBatch(partner_id, batch_id);
-                    let availableSeats = 0;
+                dataStream.on('data', (row: any) => {
+                    rowNumber++;
+                    this.logger.info(`Processing row ${rowNumber}:`, row);
                     
-                    if (seat && seat.is_active) {
-                        availableSeats = (seat.seat_count || 0) - (seat.seats_assigned || 0);
-                        this.logger.info(`Batch has ${availableSeats} available seats for ${candidatesToCreate.length} candidates`);
-                    } else {
-                        this.logger.info(`No active seat subscription for batch. All candidates will be unpaid.`);
+                    const firstname = (row.firstname || '').trim();
+                    const lastname = (row.lastname || '').trim();
+                    const email = (row.email || '').trim().toLowerCase();
+
+                    let isValid = true;
+                    const errors: Record<string, string[]> = {};
+
+                    // Validate required fields
+                    if (!firstname) {
+                        isValid = false;
+                        errors['firstname'] = ['First name is required'];
                     }
 
-                    // Separate candidates into paid and unpaid based on available seats
-                    const paidCandidates = candidatesToCreate.slice(0, availableSeats);
-                    const unpaidCandidates = candidatesToCreate.slice(availableSeats);
-
-                    this.logger.info(`Creating ${paidCandidates.length} paid candidates and ${unpaidCandidates.length} unpaid candidates`);
-
-                    // Create both paid and unpaid candidates
-                    const createdResults = await this.candidatesRepository.createCandidatesBulk(
-                        candidatesToCreate,
-                        seat && seat.is_active ? seat._id.toString() : null,
-                        availableSeats
-                    );
-                    
-                    results.successful = createdResults.length;
-                    results.candidates = createdResults.map(result => ({
-                        _id: result.user._id as string,
-                        firstname: result.user.firstname,
-                        lastname: result.user.lastname || '',
-                        email: result.user.email,
-                        batch_id: result.partnerCandidate.batch_id ? batch_id : undefined,
-                        batch_name: result.partnerCandidate.batch_id ? batch.batch_name : undefined,
-                        is_active: result.user.is_active,
-                        is_paid_for: result.partnerCandidate.is_paid_for || false,
-                        invite_status: result.partnerCandidate.invite_status || 'pending',
-                        invite_sent_at: result.partnerCandidate.invite_sent_at,
-                        invite_accepted_at: result.partnerCandidate.invite_accepted_at,
-                        partner_candidate_id: result.partnerCandidate._id as string,
-                        createdAt: result.partnerCandidate.createdAt!,
-                        updatedAt: result.partnerCandidate.updatedAt!
-                    }));
-                } catch (bulkError: any) {
-                    // Handle any bulk insert errors
-                    this.logger.error('Bulk insert error:', bulkError);
-                    
-                    // If some documents were inserted despite errors
-                    if (bulkError.insertedDocs && bulkError.insertedDocs.length > 0) {
-                        results.successful = bulkError.insertedDocs.length;
-                        results.candidates = bulkError.insertedDocs.map((candidate: IUser) => ({
-                            _id: candidate._id as string,
-                            firstname: candidate.firstname,
-                            lastname: candidate.lastname || '',
-                            email: candidate.email,
-                            batch_id: batch_id,
-                            batch_name: batch.batch_name,
-                            is_active: candidate.is_active,
-                            is_paid_for: candidate.is_paid_for || false,
-                            invite_status: candidate.invite_status || 'pending',
-                            invite_sent_at: candidate.invite_sent_at,
-                            invite_accepted_at: candidate.invite_accepted_at,
-                            createdAt: candidate.createdAt!,
-                            updatedAt: candidate.updatedAt!
-                        }));
+                    if (!lastname) {
+                        isValid = false;
+                        errors['lastname'] = ['Last name is required'];
                     }
-                    
-                    // Mark remaining as failed
-                    const failedCount = candidatesToCreate.length - (bulkError.insertedDocs?.length || 0);
-                    results.failed += failedCount;
-                }
-            }
 
-            // Mark "add candidates" step as complete on dashboard (only on first successful upload)
-            if (results.successful > 0) {
-                const partner = await this.partnerRepository.findById(partner_id);
-                if (partner && !partner.has_added_candidates) {
-                    await this.partnerRepository.markCandidateAdded(partner_id);
-                    this.logger.info(`Marked first candidate added via CSV for partner: ${partner_id}`);
-                }
-            }
+                    if (!email) {
+                        isValid = false;
+                        errors['email'] = ['Email is required'];
+                    } else if (!emailRegex.test(email)) {
+                        isValid = false;
+                        errors['email'] = ['Invalid email format'];
+                    } else if (emailsInFile.includes(email)) {
+                        isValid = false;
+                        errors['email'] = ['Duplicate email in CSV file'];
+                    }
 
-            this.logger.info(`CSV upload completed for partner ${partner_id}: ${results.successful} successful, ${results.failed} failed`);
-            return results;
+                    // Track email for in-file duplicate detection
+                    if (email) {
+                        emailsInFile.push(email);
+                    }
 
+                    parsedRows.push({
+                        rowNumber,
+                        firstname,
+                        lastname,
+                        email,
+                        isValid,
+                        errors: Object.keys(errors).length > 0 ? errors : undefined
+                    });
+                });
+
+                dataStream.on('error', (error: Error) => {
+                    this.logger.error('CSV parsing error:', error);
+                    reject(new ValidationError(`Failed to parse CSV file: ${error.message}`));
+                });
+
+                dataStream.on('end', async () => {
+                    try {
+                        this.logger.info(`CSV parsing completed: ${parsedRows.length} rows processed`);
+
+                        // Check for header validation errors
+                        if (headerError) {
+                            reject(new ValidationError(headerError));
+                            return;
+                        }
+
+                        if (parsedRows.length === 0) {
+                            this.logger.error('No data rows found in CSV file');
+                            reject(new ValidationError('CSV file contains no data rows'));
+                            return;
+                        }
+
+                        results.total_rows = parsedRows.length;
+
+                        // Check for existing emails in database (single DB call)
+                        const validRows = parsedRows.filter(row => row.isValid);
+                        const emailsToCheck = validRows.map(row => row.email);
+                        
+                        let existingInBatch: Map<string, boolean>;
+                        if (batch_id) {
+                            existingInBatch = await this.candidatesRepository.checkMultiplePartnerCandidatesExist(
+                                partner_id,
+                                batch_id,
+                                emailsToCheck
+                            );
+                        } else {
+                            // Check if candidates exist for partner (any batch or no batch)
+                            existingInBatch = new Map();
+                            const existingEmails = await this.candidatesRepository.getExistingCandidateEmails(
+                                partner_id,
+                                emailsToCheck
+                            );
+                            existingEmails.forEach(email => existingInBatch.set(email, true));
+                        }
+
+                        // Separate valid candidates from those with errors
+                        const candidatesToCreate: Array<{
+                            partner_id: string;
+                            batch_id?: string;
+                            firstname: string;
+                            lastname: string;
+                            email: string;
+                        }> = [];
+
+                        for (const row of parsedRows) {
+                            if (!row.isValid) {
+                                results.failed++;
+                                // Flatten errors object to a readable string
+                                const errorMessages = row.errors 
+                                    ? Object.entries(row.errors)
+                                        .map(([field, msgs]) => `${field}: ${msgs.join(', ')}`)
+                                        .join('; ')
+                                    : 'Unknown validation error';
+                                    
+                                results.errors.push({
+                                    row: row.rowNumber,
+                                    email: row.email || 'N/A',
+                                    error: errorMessages
+                                });
+                            } else if (existingInBatch.get(row.email)) {
+                                results.failed++;
+                                results.errors.push({
+                                    row: row.rowNumber,
+                                    email: row.email,
+                                    error: batch_id 
+                                        ? 'Candidate already exists in this batch'
+                                        : 'Candidate already exists for this partner'
+                                });
+                            } else {
+                                candidatesToCreate.push({
+                                    partner_id,
+                                    batch_id,
+                                    firstname: row.firstname,
+                                    lastname: row.lastname,
+                                    email: row.email
+                                });
+                            }
+                        }
+
+                        // Check seat availability and bulk create candidates
+                        if (candidatesToCreate.length > 0) {
+                            try {
+                                let seat: any = null;
+                                let availableSeats = 0;
+                                
+                                // Only check seats if batch_id is provided
+                                if (batch_id) {
+                                    seat = await this.candidatesRepository.getSeatByBatch(partner_id, batch_id);
+                                    if (seat && seat.is_active) {
+                                        availableSeats = (seat.seat_count || 0) - (seat.seats_assigned || 0);
+                                        this.logger.info(`Batch has ${availableSeats} available seats for ${candidatesToCreate.length} candidates`);
+                                    } else {
+                                        this.logger.info(`No active seat subscription for batch. All candidates will be unpaid.`);
+                                    }
+                                } else {
+                                    this.logger.info(`No batch provided. All candidates will be unpaid.`);
+                                }
+
+                                // Separate candidates into paid and unpaid based on available seats
+                                const paidCandidates = candidatesToCreate.slice(0, availableSeats);
+                                const unpaidCandidates = candidatesToCreate.slice(availableSeats);
+
+                                this.logger.info(`Creating ${paidCandidates.length} paid candidates and ${unpaidCandidates.length} unpaid candidates`);
+
+                                // Create both paid and unpaid candidates
+                                const createdResults = await this.candidatesRepository.createCandidatesBulk(
+                                    candidatesToCreate,
+                                    seat && seat.is_active ? seat._id.toString() : null,
+                                    availableSeats
+                                );
+                                
+                                results.successful = createdResults.length;
+                                results.candidates = createdResults.map(result => ({
+                                    _id: result.user._id as string,
+                                    firstname: result.user.firstname,
+                                    lastname: result.user.lastname || '',
+                                    email: result.user.email,
+                                    batch_id: result.partnerCandidate.batch_id ? (batch_id || undefined) : undefined,
+                                    batch_name: result.partnerCandidate.batch_id && batch ? batch.batch_name : undefined,
+                                    is_active: result.user.is_active,
+                                    is_paid_for: result.partnerCandidate.is_paid_for || false,
+                                    invite_status: result.partnerCandidate.invite_status || 'pending',
+                                    invite_sent_at: result.partnerCandidate.invite_sent_at,
+                                    invite_accepted_at: result.partnerCandidate.invite_accepted_at,
+                                    partner_candidate_id: result.partnerCandidate._id as string,
+                                    createdAt: result.partnerCandidate.createdAt!,
+                                    updatedAt: result.partnerCandidate.updatedAt!
+                                }));
+                            } catch (bulkError: any) {
+                                // Handle any bulk insert errors
+                                this.logger.error('Bulk insert error:', bulkError);
+                                
+                                // If some documents were inserted despite errors
+                                if (bulkError.insertedDocs && bulkError.insertedDocs.length > 0) {
+                                    results.successful = bulkError.insertedDocs.length;
+                                    results.candidates = bulkError.insertedDocs.map((candidate: IUser) => ({
+                                        _id: candidate._id as string,
+                                        firstname: candidate.firstname,
+                                        lastname: candidate.lastname || '',
+                                        email: candidate.email,
+                                        batch_id: batch_id,
+                                        batch_name: batch.batch_name,
+                                        is_active: candidate.is_active,
+                                        is_paid_for: candidate.is_paid_for || false,
+                                        invite_status: candidate.invite_status || 'pending',
+                                        invite_sent_at: candidate.invite_sent_at,
+                                        invite_accepted_at: candidate.invite_accepted_at,
+                                        createdAt: candidate.createdAt!,
+                                        updatedAt: candidate.updatedAt!
+                                    }));
+                                }
+                                
+                                // Mark remaining as failed
+                                const failedCount = candidatesToCreate.length - (bulkError.insertedDocs?.length || 0);
+                                results.failed += failedCount;
+                            }
+                        }
+
+                            // Mark "add candidates" step as complete on dashboard (only on first successful upload)
+                            if (results.successful > 0) {
+                                const partner = await this.partnerRepository.findById(partner_id);
+                                if (partner && !partner.has_added_candidates) {
+                                    await this.partnerRepository.markCandidateAdded(partner_id);
+                                    this.logger.info(`Marked first candidate added via CSV for partner: ${partner_id}`);
+                                }
+                            }
+
+                            this.logger.info(`CSV upload completed for partner ${partner_id}: ${results.successful} successful, ${results.failed} failed`);
+                            resolve(results);
+                        } catch (error: any) {
+                            this.logger.error('Error processing CSV rows:', error);
+                            reject(error);
+                        }
+                    });
+            });
         } catch (error: any) {
             if (error instanceof ValidationError) {
                 throw error;

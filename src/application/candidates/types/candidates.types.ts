@@ -10,7 +10,7 @@ export interface CreateCandidateDTO {
 }
 
 export interface UploadCandidatesCSVDTO {
-    batch_id: string;
+    batch_id?: string; // Optional - candidates without batch are unpaid
     file: any; // Multer file object
 }
 

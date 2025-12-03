@@ -288,14 +288,37 @@ export class CandidatesRepository {
             { email: { $in: emails } },
             { email: 1, _id: 0 }
         ).lean();
-        
+
         return new Set(existingCandidates.map(c => c.email));
     }
 
-    async createCandidatesBulk(
+    async getExistingCandidateEmails(partner_id: string, emails: string[]): Promise<Set<string>> {
+        // Find users with these emails
+        const users = await this.userModel.find(
+            { email: { $in: emails } },
+            { email: 1, _id: 1 }
+        ).lean();
+
+        const userMap = new Map(users.map(u => [u._id.toString(), u.email]));
+        const candidateIds = Array.from(userMap.keys()).map(id => new mongoose.Types.ObjectId(id));
+
+        // Check if these users are already candidates for this partner
+        const existingRelationships = await this.partnerCandidateModel.find({
+            partner_id: new mongoose.Types.ObjectId(partner_id),
+            candidate_id: { $in: candidateIds }
+        }).lean();
+
+        const existingEmails = new Set<string>();
+        existingRelationships.forEach(rel => {
+            const email = userMap.get(rel.candidate_id.toString());
+            if (email) existingEmails.add(email);
+        });
+
+        return existingEmails;
+    }    async createCandidatesBulk(
         candidatesData: Array<{
             partner_id: string;
-            batch_id: string;
+            batch_id?: string;
             firstname: string;
             lastname: string;
             email: string;
@@ -359,8 +382,8 @@ export class CandidatesRepository {
                 invite_sent_at: new Date()
             };
 
-            // Only add batch_id if candidate is paid for
-            if (isPaidFor) {
+            // Only add batch_id if provided and candidate is paid for
+            if (data.batch_id && isPaidFor) {
                 candidateData.batch_id = new mongoose.Types.ObjectId(data.batch_id);
             }
 
