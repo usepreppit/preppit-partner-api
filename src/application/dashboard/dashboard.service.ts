@@ -159,7 +159,7 @@ export class DashboardService {
 				title: 'Set Up Payment Method',
 				description: 'Configure your payment method to receive payouts from the platform',
 				status: partnerStatus.payment_method_setup ? 'completed' : 'pending',
-				action_url: '/settings/payment',
+				action_url: '/account/payments',
 				completed_at: partnerStatus.payment_method_setup_at
 			}
 		];
