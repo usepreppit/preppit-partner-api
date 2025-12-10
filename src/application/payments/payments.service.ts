@@ -7,6 +7,8 @@ import { PaymentsRepository } from './models/payments.repository';
 import { CandidatesRepository } from '../candidates/models/candidates.repository';
 import { IPaymentPlans } from './models/payment_plans.model';
 import { IPayments } from './models/payments.models';
+import { PostmarkEmailService } from '../../helpers/email/postmark.helper';
+import { postmarkTemplates } from '../../templates/postmark.templates';
 // import { TransactionRepository } from './models/transactions.repository';
 // import { GetPayStackAuthUrl, VerifyPaystackTransaction, DebitNGNCustomerCard } from '../../helpers/billings/paystack.helper';
 
@@ -18,6 +20,7 @@ export class PaymentsService {
 	@inject(PaymentsRepository) private readonly paymentsRepository: PaymentsRepository,
 	@inject(PartnerRepository) private readonly partnerRepository: PartnerRepository,
 	@inject(CandidatesRepository) private readonly candidatesRepository: CandidatesRepository,
+	@inject(PostmarkEmailService) private readonly emailService: PostmarkEmailService,
 
     ) {}
 
@@ -1152,6 +1155,38 @@ export class PaymentsService {
 			// Update auto-renew preference if different from current
 			if (auto_renew !== partner_profile.auto_renew_subscription) {
 				await this.partnerRepository.updateAutoRenewPreference(partner_id, auto_renew);
+			}
+			
+			// Get partner details and batch name for email
+			const partner = await this.partnerRepository.findById(partner_id);
+			let batchName = '';
+			if (batch_id) {
+				const batch = await this.candidatesRepository.getBatchById(batch_id);
+				if (batch) {
+					batchName = batch.batch_name;
+				}
+			}
+			
+			if (partner) {
+				// Send subscription confirmation email
+				await this.emailService.sendTemplateEmail(
+					postmarkTemplates.NEW_SUBSCRIPTION,
+					partner.email,
+					{
+						firstname: partner.firstname,
+						subscriptionId: payment_record._id?.toString() || '',
+						planName: `${candidate_count} Seats for ${months} Month${months > 1 ? 's' : ''}`,
+						durationMonths: months,
+						seatsPurchased: candidate_count,
+						batchName: batchName,
+						recommendedExam: {
+							examId: 'exam_pebc',
+							name: 'PEBC Qualifying Examination'
+						},
+						nextAction: 'ADD_CANDIDATES'
+					}
+				);
+				this.logger.info(`Subscription confirmation email sent to ${partner.email}`);
 			}
 			
 			return {
