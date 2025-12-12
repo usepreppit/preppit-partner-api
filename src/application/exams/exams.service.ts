@@ -26,12 +26,22 @@ export class ExamsService {
 
     ) {}
 
-    async GetExams(filter: Record<string, any> = {}): Promise<IExam[]> {
+    async GetExams(filter: Record<string, any> = {}, page: number = 1, limit: number = 20): Promise<{
+        exams: IExam[];
+        pagination: {
+            current_page: number;
+            per_page: number;
+            total: number;
+            total_pages: number;
+            has_next: boolean;
+            has_previous: boolean;
+        };
+    }> {
 		try {
 			this.logger.info('Fetching exams with filter:', filter);
-			const exams = await this.examRepository.getExams(filter);
-			this.logger.info(`Fetched ${exams.length} exams`);
-			return exams;
+			const result = await this.examRepository.getExams(filter, page, limit);
+			this.logger.info(`Fetched ${result.exams.length} exams (page ${page}/${result.pagination.total_pages})`);
+			return result;
 		} catch (error) {
 			this.logger.error('Error fetching exams', error);
 			throw new ApiError(500, 'Failed to fetch exams', error);

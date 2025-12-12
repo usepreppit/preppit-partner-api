@@ -32,38 +32,69 @@ export class ExamsRepository {
         return await exam.save();
     }
 
-    async getExams(filter: Record<string, any> = {}): Promise<any[]> {
-        return await this.examModel.aggregate([
-            { $match: filter },
-            {
-                $lookup: {
-                    from: "examenrollments", // collection name for ExamEnrollmentModel
-                    localField: "_id",
-                    foreignField: "examId",
-                    as: "enrollments"
-                }
-            },
-            {
-                $lookup: {
-                    from: "examscenarios", // collection name for ExamScenariosModel
-                    localField: "_id",
-                    foreignField: "examId",
-                    as: "scenarios"
-                }
-            },
-            {
-                $addFields: {
-                    studentsJoined: { $size: "$enrollments" },
-                    scenarioCount: { $size: "$scenarios" }
-                }
-            },
-            {
-                $project: {
-                    enrollments: 0,
-                    scenarios: 0
-                }
+    async getExams(filter: Record<string, any> = {}, page: number = 1, limit: number = 20): Promise<{ 
+        exams: any[]; 
+        pagination: { 
+            current_page: number; 
+            per_page: number; 
+            total: number; 
+            total_pages: number; 
+            has_next: boolean; 
+            has_previous: boolean; 
+        } 
+    }> {
+        const skip = (page - 1) * limit;
+        
+        const [exams, total] = await Promise.all([
+            this.examModel.aggregate([
+                { $match: filter },
+                {
+                    $lookup: {
+                        from: "examenrollments",
+                        localField: "_id",
+                        foreignField: "examId",
+                        as: "enrollments"
+                    }
+                },
+                {
+                    $lookup: {
+                        from: "examscenarios",
+                        localField: "_id",
+                        foreignField: "examId",
+                        as: "scenarios"
+                    }
+                },
+                {
+                    $addFields: {
+                        studentsJoined: { $size: "$enrollments" },
+                        scenarioCount: { $size: "$scenarios" }
+                    }
+                },
+                {
+                    $project: {
+                        enrollments: 0,
+                        scenarios: 0
+                    }
+                },
+                { $skip: skip },
+                { $limit: limit }
+            ]).exec(),
+            this.examModel.countDocuments(filter)
+        ]);
+
+        const total_pages = Math.ceil(total / limit);
+
+        return {
+            exams,
+            pagination: {
+                current_page: page,
+                per_page: limit,
+                total,
+                total_pages,
+                has_next: page < total_pages,
+                has_previous: page > 1
             }
-        ]).exec();
+        };
     }
 
     async getMyExams(userId: string): Promise<IExam[]> {

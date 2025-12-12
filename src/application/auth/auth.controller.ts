@@ -51,6 +51,17 @@ export class AuthController {
         }
     }
 
+    async ResendVerificationEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
+        const { email } = req.body;
+        try {
+            await this.authService.ResendVerificationEmail(email);
+            ApiResponse.ok(null, 'Verification email sent successfully').send(res);
+        } catch (error) {
+            this.logger.error('Error resending verification email', error);
+            next(error);
+        }
+    }
+
     async SocialLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
         const channel = req.body.channel as string;
         const code = req.body.code as string;

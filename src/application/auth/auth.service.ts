@@ -128,6 +128,7 @@ export class AuthService {
 			user.verification_url = verification_url; //temporary fix should 
 
 			//Send Account Creation Email
+			console.log("Postmark Template ID:", postmarkTemplates.ACTIVATE_ACCOUNT);
 			await this.emailService.sendTemplateEmail(
 				postmarkTemplates.ACTIVATE_ACCOUNT, //Postmark Template ID for Verify Account
 				user.email,
@@ -194,6 +195,61 @@ export class AuthService {
 		} catch (error) {
 			this.logger.error(`Error verifying email: ${error}`);
 			throw new ApiError(400, 'Error verifying email', error);
+		}
+	}
+
+	async ResendVerificationEmail(email: string): Promise<void> {
+		try {
+			const accountType = this.getAccountType(email);
+			let user: IAdmin | IPartner | null = null;
+
+			// Check the appropriate table based on email domain
+			if (accountType === 'admin') {
+				user = await this.adminRepository.findByEmail(email, true);
+			} else {
+				user = await this.partnerRepository.findByEmail(email, true);
+			}
+
+			if (!user) {
+				throw new ApiError(404, 'User not found with this email address');
+			}
+
+			// Check if the user account is already activated
+			if (user.is_active === true) {
+				throw new ApiError(400, 'Account already activated, please proceed to login');
+			}
+
+			// Generate new verification token
+			const verify_token = randomBytes(32).toString('hex');
+			const base_url = process.env.SENDING_URL;
+			const activation_url = `verify-email?email=${user.email}&verify_token=${verify_token}`;
+			const verification_url = `${base_url}/${activation_url}`;
+
+			// Update the verification token
+			if (accountType === 'admin') {
+				await this.adminRepository.updateById(user._id!.toString(), { verification_token: verify_token });
+			} else {
+				await this.partnerRepository.updateById(user._id!.toString(), { verification_token: verify_token });
+			}
+
+			// Send verification email
+			await this.emailService.sendTemplateEmail(
+				postmarkTemplates.ACTIVATE_ACCOUNT,
+				user.email,
+				{ 
+					firstname: user.firstname, 
+					email: user.email, 
+					base_url: base_url, 
+					verification_url, 
+					activation_url: activation_url 
+				}
+			);
+
+			this.logger.info(`Verification email resent to: ${user.email}`);
+			return Promise.resolve();
+		} catch (error) {
+			this.logger.error(`Error resending verification email: ${error}`);
+			throw new ApiError(400, 'Error resending verification email', error);
 		}
 	}
 

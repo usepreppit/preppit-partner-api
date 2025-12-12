@@ -51,7 +51,8 @@ export class UtilsController {
         try {
             this.logger.info('Getting available exams for partner onboarding');
             // Fetch all published exams from the database
-            const exams = await this.examService.GetExams({ status: 'published' });
+            const result = await this.examService.GetExams({ status: 'published' }, 1, 100);
+            const exams = result.exams;
             
             // Format the exams for partner selection
             const availableExams = exams.map((exam: any) => ({

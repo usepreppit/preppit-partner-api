@@ -354,7 +354,8 @@ async CompleteOnboarding(user_id: string, onboardingData: any, account_type?: 'a
 			});
 			
 			// Query database to verify exams exist
-			const exams = await this.examsRepository.getExams({ _id: { $in: examIds } });
+			const result = await this.examsRepository.getExams({ _id: { $in: examIds } }, 1, 100);
+			const exams = result.exams;
 			
 			if (exams.length !== examIds.length) {
 				const foundIds = exams.map((exam: any) => exam._id.toString());

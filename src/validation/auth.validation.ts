@@ -72,6 +72,19 @@ export const validate_register = async (req: Request, res: Response, next: NextF
 	});
 };
 
+export const validate_resend_verification = (req: Request, res: Response, next: NextFunction) => {
+	const validationRule = {
+		email: "required|string|email",
+	};
+	validator(req.body, validationRule, {}, (err: IntValidationError, status: boolean) => {
+		if (!status) {
+			sendError(res, err);
+		} else {
+			next();
+		}
+	});
+};
+
 export const validate_phone_and_email = (req: Request, res: Response, next: NextFunction) => {
 	const validationRule = {
 		email: "required|string|email|userparam_available:email",

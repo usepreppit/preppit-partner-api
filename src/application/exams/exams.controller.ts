@@ -14,10 +14,16 @@ export class ExamsController {
     async GetExams(req: Request, res: Response, next: NextFunction): Promise<void> {
         const query = req.query;
         try {
-            //convert query to filter object
-            const filter = query ? JSON.parse(JSON.stringify(query)) : {};
-            const exams = await this.examService.GetExams(filter);
-            ApiResponse.ok(exams, 'Exams fetched successfully').send(res);
+            // Extract pagination parameters
+            const page = parseInt(query.page as string) || 1;
+            const limit = parseInt(query.limit as string) || 20;
+            
+            // Remove pagination params from filter
+            const { page: _, limit: __, ...filterQuery } = query;
+            const filter = filterQuery ? JSON.parse(JSON.stringify(filterQuery)) : {};
+            
+            const result = await this.examService.GetExams(filter, page, limit);
+            ApiResponse.ok(result, 'Exams fetched successfully').send(res);
         } catch (error) {
             this.logger.error('Error fetching exams', error);
             next(error);
