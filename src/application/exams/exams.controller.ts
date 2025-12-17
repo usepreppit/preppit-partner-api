@@ -93,8 +93,11 @@ export class ExamsController {
         const with_user_progress = req.query.with_user_progress == "true" ? true : false;
         const userId = req.curr_user?._id as string;
         const account_type = req.account_type;
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 20;
+        
         try {
-            const get_exam_scenarios = await this.examService.GetExamScenarios(examId, userId, with_user_progress, account_type);
+            const get_exam_scenarios = await this.examService.GetExamScenarios(examId, userId, with_user_progress, account_type, page, limit);
             ApiResponse.ok(get_exam_scenarios, 'Exam scenarios Fetched').send(res);
         } catch (error) {
             this.logger.error('Error getting exam scenarios', error);

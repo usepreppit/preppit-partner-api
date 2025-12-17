@@ -133,17 +133,17 @@ export class ExamsService {
 		}
 	}
 
-	async GetExamScenarios(examId: string, userId: string, user_progress: boolean, _account_type?: 'admin' | 'partner'): Promise<IExamScenarios[] | null> {
+	async GetExamScenarios(examId: string, userId: string, user_progress: boolean, _account_type?: 'admin' | 'partner', page: number = 1, limit: number = 20): Promise<any> {
 		try {
 			if(user_progress && !userId) {
 				throw new ApiError(412, 'Unable to get user progress');
 			}
 
-			const exam_scenarios = user_progress 
-				? await this.examRepository.getExamScenariosWithProgress(examId, userId)
-				: await this.examRepository.getExamScenarios(examId);
+			const result = user_progress 
+				? await this.examRepository.getExamScenariosWithProgress(examId, userId, page, limit)
+				: await this.examRepository.getExamScenarios(examId, page, limit);
 
-			return exam_scenarios;
+			return result;
 		} catch (error) {
 			this.logger.error('Error getting exam scenarios', error);
 			throw new ApiError(500, 'Error getting exam scenarios', error);

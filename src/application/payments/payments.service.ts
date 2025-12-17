@@ -1025,22 +1025,52 @@ export class PaymentsService {
 		}
 	}
 
-	async calculateSeatPricing(seat_count: number, sessions_per_day: number, months: number): Promise<{
-		per_candidate: number;
-		total: number;
-		breakdown: {
-			seat_count: number;
-			sessions_per_day: number;
-			months: number;
-			monthly_sessions: number;
-			cost_per_month: number;
-			base_price_per_candidate_per_month: number;
-			volume_discount: number;
-			final_price_per_candidate_per_month: number;
-			final_price_per_candidate_total: number;
-		}
-	}> {
+	async calculateSeatPricing(
+		seat_count: number, 
+		sessions_per_day: number, 
+		months: number,
+		is_updating: boolean = false,
+		seat_id?: string
+	): Promise<any> {
 		try {
+			let prorationFactor = 1;
+			let daysRemaining = 0;
+			let subscriptionEndDate: Date | undefined;
+			let isProrated = false;
+			let seatDetails: any = null;
+
+			// If updating, get subscription details and calculate proration
+			if (is_updating && seat_id) {
+				const seat = await this.candidatesRepository.getSeatById(seat_id);
+				if (!seat) {
+					throw new ApiError(404, 'Seat subscription not found');
+				}
+
+				seatDetails = seat;
+
+				// Get end date from the subscription
+				subscriptionEndDate = new Date(seat.subscription_end_date);
+				const today = new Date();
+
+				// Calculate days remaining
+				const timeDiff = subscriptionEndDate.getTime() - today.getTime();
+				daysRemaining = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+
+				if (daysRemaining <= 0) {
+					throw new ApiError(400, 'Subscription has already expired');
+				}
+
+				// Calculate proration factor based on remaining days
+				// Assuming months is the original subscription duration
+				const totalDaysInSubscription = months * 30;
+				prorationFactor = daysRemaining / totalDaysInSubscription;
+				isProrated = true;
+
+				// Use sessions and duration from existing subscription
+				sessions_per_day = seat.sessions_per_day;
+				months = Math.ceil(daysRemaining / 30); // Convert remaining days to months
+			}
+
 			// Calculate sessions per day (unlimited = 15)
 			const actualSessionsPerDay = sessions_per_day === -1 ? 15 : sessions_per_day;
 			
@@ -1072,26 +1102,65 @@ export class PaymentsService {
 			const perCandidatePerMonth = Math.round(basePricePerMonth * multiplier);
 			
 			// Calculate total price for the entire duration
-			const perCandidateTotal = perCandidatePerMonth * months;
+			let perCandidateTotal = perCandidatePerMonth * months;
+			
+			// Apply proration if updating
+			if (isProrated) {
+				perCandidateTotal = Math.round(perCandidateTotal * prorationFactor);
+			}
+
 			const total = perCandidateTotal * seat_count;
 			
-			return {
-				per_candidate: perCandidateTotal,
-				total,
-				breakdown: {
-					seat_count,
-					sessions_per_day: actualSessionsPerDay,
-					months,
-					monthly_sessions: monthlySessions,
-					cost_per_month: cost,
-					base_price_per_candidate_per_month: basePricePerMonth,
-					volume_discount: discountPercentage,
-					final_price_per_candidate_per_month: perCandidatePerMonth,
-					final_price_per_candidate_total: perCandidateTotal
-				}
+			const breakdown: any = {
+				seat_count,
+				sessions_per_day: actualSessionsPerDay,
+				months,
+				monthly_sessions: monthlySessions,
+				cost_per_month: cost,
+				base_price_per_candidate_per_month: basePricePerMonth,
+				volume_discount: discountPercentage,
+				final_price_per_candidate_per_month: perCandidatePerMonth,
+				final_price_per_candidate_total: perCandidateTotal
 			};
+
+			// Add proration details if applicable
+			if (isProrated) {
+				breakdown.is_prorated = true;
+				breakdown.days_remaining = daysRemaining;
+				breakdown.proration_factor = prorationFactor;
+				breakdown.subscription_end_date = subscriptionEndDate;
+			}
+
+			// Build response matching the seat batch creation convention
+			const response: any = {
+				pricing_breakdown: breakdown,
+				per_candidate: perCandidateTotal,
+				total
+			};
+
+			// Add subscription details if updating an existing batch
+			if (is_updating && seatDetails) {
+				response.subscription = {
+					seat_id: seatDetails._id,
+					batch_id: seatDetails.batch_id,
+					batch_name: seatDetails.batch?.batch_name,
+					current_seat_count: seatDetails.total_seats,
+					new_seat_count: seat_count,
+					total_seats_after_update: seatDetails.total_seats + seat_count,
+					sessions_per_day: seatDetails.sessions_per_day,
+					subscription_start_date: seatDetails.subscription_start_date,
+					subscription_end_date: seatDetails.subscription_end_date,
+					days_remaining: daysRemaining,
+					is_active: seatDetails.is_active
+				};
+			}
+
+			return response;
 		} catch (error) {
 			this.logger.error(`Error calculating seat pricing: ${error}`);
+			if (error instanceof ApiError) {
+				throw error;
+			}
 			throw new ApiError(400, 'Error calculating seat pricing', error);
 		}
 	}

@@ -316,9 +316,17 @@ export class PaymentsController {
             const seat_count = parseInt(req.query.seat_count as string);
             const sessions_per_day = parseInt(req.query.sessions_per_day as string);
             const months = parseInt(req.query.months as string);
+            const is_updating = req.query.is_updating === 'true';
+            const seat_id = req.query.seat_id as string;
             
             if (!seat_count || !sessions_per_day || !months) {
                 ApiResponse.badRequest('seat_count, sessions_per_day, and months are required query parameters').send(res);
+                return;
+            }
+
+            // If updating, seat_id is required
+            if (is_updating && !seat_id) {
+                ApiResponse.badRequest('seat_id is required when is_updating is true').send(res);
                 return;
             }
 
@@ -337,7 +345,13 @@ export class PaymentsController {
             }
 
             try {
-                const pricing = await this.paymentService.calculateSeatPricing(seat_count, sessions_per_day, months);
+                const pricing = await this.paymentService.calculateSeatPricing(
+                    seat_count, 
+                    sessions_per_day, 
+                    months, 
+                    is_updating, 
+                    seat_id
+                );
                 ApiResponse.ok(pricing, 'Seat pricing calculated successfully').send(res);
             } catch (error) {
                 this.logger.error('Error calculating seat pricing', error);

@@ -233,113 +233,150 @@ export class ExamsRepository {
         return await this.examModel.findById(id).exec();
     }
 
-    async getExamScenarios(examId: string): Promise<IExamScenarios[] | null> {
+    async getExamScenarios(examId: string, page: number = 1, limit: number = 20): Promise<{ scenarios: IExamScenarios[], pagination: any } | null> {
         const examObjectId = new mongoose.Types.ObjectId(examId);
+        const skip = (page - 1) * limit;
 
-        const scenarios = await this.examScenariosModel.aggregate([
-            {
-                $match: { examId: examObjectId }
-            },
-            {
-                $lookup: {
-                    from: "practices", // collection name for PracticeModel
-                    let: { scenarioId: "$_id" },
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: {
-                                    $eq: ["$scenarioId", "$$scenarioId"]
+        const [scenarios, total] = await Promise.all([
+            this.examScenariosModel.aggregate([
+                {
+                    $match: { examId: examObjectId }
+                },
+                {
+                    $lookup: {
+                        from: "practices", // collection name for PracticeModel
+                        let: { scenarioId: "$_id" },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: {
+                                        $eq: ["$scenarioId", "$$scenarioId"]
+                                    }
                                 }
                             }
-                        }
-                    ],
-                    as: "userPractice"
-                }
-            },
-            {
-                $addFields: {
-                    totalPersons: { $size: { $setUnion: ["$userPractice.userId", []] } },
-                    avgScore: {
-                        $cond: [
-                            { $gt: [{ $size: "$userPractice" }, 0] },
-                            { $avg: "$userPractice.score" },
-                            0
-                        ]
+                        ],
+                        as: "userPractice"
                     }
-                }
-            },
-            {
-                $project: {
-                    question_details: 1,
-                    document_url: 1,
-                    page_number: 1,
-                    available_references: 1,
-                    examId: 1,
-                    totalPersons: 1,
-                    avgScore: 1
-                }
-            }
+                },
+                {
+                    $addFields: {
+                        totalPersons: { $size: { $setUnion: ["$userPractice.userId", []] } },
+                        avgScore: {
+                            $cond: [
+                                { $gt: [{ $size: "$userPractice" }, 0] },
+                                { $avg: "$userPractice.score" },
+                                0
+                            ]
+                        }
+                    }
+                },
+                {
+                    $project: {
+                        question_details: 1,
+                        document_url: 1,
+                        page_number: 1,
+                        available_references: 1,
+                        examId: 1,
+                        totalPersons: 1,
+                        avgScore: 1
+                    }
+                },
+                { $skip: skip },
+                { $limit: limit }
+            ]),
+            this.examScenariosModel.countDocuments({ examId: examObjectId })
         ]);
-        return scenarios;
+
+        const totalPages = Math.ceil(total / limit);
+
+        return {
+            scenarios,
+            pagination: {
+                current_page: page,
+                per_page: limit,
+                total: total,
+                total_pages: totalPages,
+                has_next: page < totalPages,
+                has_previous: page > 1
+            }
+        };
     }
 
-    async getExamScenariosWithProgress(examId: string, userId: string): Promise<IExamScenarios[] | null> {
+    async getExamScenariosWithProgress(examId: string, userId: string, page: number = 1, limit: number = 20): Promise<{ scenarios: IExamScenarios[], pagination: any } | null> {
         const examObjectId = new mongoose.Types.ObjectId(examId);
         const userObjectId = new mongoose.Types.ObjectId(userId);
+        const skip = (page - 1) * limit;
 
-        const scenarios = await this.examScenariosModel.aggregate([
-            {
-                $match: { examId: examObjectId }
-            },
-            {
-                $lookup: {
-                    from: "practices",              // collection name for PracticeModel
-                    let: { scenarioId: "$_id" },
-                    pipeline: [
-                        { 
-                            $match: { 
-                                $expr: { 
-                                    $and: [
-                                        { $eq: ["$scenarioId", "$$scenarioId"] },
-                                        { $eq: ["$userId", userObjectId] }
-                                    ]
+        const [scenarios, total] = await Promise.all([
+            this.examScenariosModel.aggregate([
+                {
+                    $match: { examId: examObjectId }
+                },
+                {
+                    $lookup: {
+                        from: "practices",              // collection name for PracticeModel
+                        let: { scenarioId: "$_id" },
+                        pipeline: [
+                            { 
+                                $match: { 
+                                    $expr: { 
+                                        $and: [
+                                            { $eq: ["$scenarioId", "$$scenarioId"] },
+                                            { $eq: ["$userId", userObjectId] }
+                                        ]
+                                    }
                                 }
                             }
-                        }
-                    ],
-                    as: "userPractice"
-                }
-            },
-            {
-                $addFields: {
-                    attempted: { $gt: [ { $size: "$userPractice" }, 0 ] }, // true if user has practiced
-                    lastAttempt: { $arrayElemAt: ["$userPractice", -1] }, // optional: show last attempt doc
-                    totalPersons: { $size: { $setUnion: ["$userPractice.userId", []] } },
-                    avgScore: {
-                        $cond: [
-                            { $gt: [{ $size: "$userPractice" }, 0] },
-                            { $avg: "$userPractice.score" },
-                            0
-                        ]
+                        ],
+                        as: "userPractice"
                     }
-                }
-            },
-            {
-                $project: {
-                    question_details: 1,
-                    document_url: 1,
-                    page_number: 1,
-                    available_references: 1,
-                    attempted: 1,
-                    lastAttempt: 1,
-                    examId: 1,
-                    totalPersons: 1,
-                    avgScore: 1
-                }
-            },
+                },
+                {
+                    $addFields: {
+                        attempted: { $gt: [ { $size: "$userPractice" }, 0 ] }, // true if user has practiced
+                        lastAttempt: { $arrayElemAt: ["$userPractice", -1] }, // optional: show last attempt doc
+                        totalPersons: { $size: { $setUnion: ["$userPractice.userId", []] } },
+                        avgScore: {
+                            $cond: [
+                                { $gt: [{ $size: "$userPractice" }, 0] },
+                                { $avg: "$userPractice.score" },
+                                0
+                            ]
+                        }
+                    }
+                },
+                {
+                    $project: {
+                        question_details: 1,
+                        document_url: 1,
+                        page_number: 1,
+                        available_references: 1,
+                        attempted: 1,
+                        lastAttempt: 1,
+                        examId: 1,
+                        totalPersons: 1,
+                        avgScore: 1
+                    }
+                },
+                { $skip: skip },
+                { $limit: limit }
+            ]),
+            this.examScenariosModel.countDocuments({ examId: examObjectId })
         ]);
 
-        return scenarios;
+        const totalPages = Math.ceil(total / limit);
+
+        return {
+            scenarios,
+            pagination: {
+                current_page: page,
+                per_page: limit,
+                total: total,
+                total_pages: totalPages,
+                has_next: page < totalPages,
+                has_previous: page > 1
+            }
+        };
     }
 
     async getExamScenarioById(examId: string, scenarioId: string | null): Promise<IExamScenarios | null> {
