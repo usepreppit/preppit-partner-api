@@ -16,6 +16,8 @@ export default (app: Router) => {
     route.get('/:id', examsController.GetExamById.bind(examsController));
     route.get('/:id/scenarios', examsController.GetExamScenarios.bind(examsController))
     route.get('/:id/scenario/:scenario_id?', examsController.GetExamScenarioById.bind(examsController))
+    route.post('/:id/scenario/:scenario_id/upload-reference', examsController.UploadReferenceFile.bind(examsController))
+    route.put('/:id/scenario/:scenario_id', examsController.UpdateExamScenario.bind(examsController))
 
     route.patch('/:id/join', examsController.JoinExam.bind(examsController));
     route.get('/subscriptions/:id', examsController.GetExamSubscriptions.bind(examsController));

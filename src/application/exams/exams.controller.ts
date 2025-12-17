@@ -92,8 +92,9 @@ export class ExamsController {
         const examId = req.params.id as string;
         const with_user_progress = req.query.with_user_progress == "true" ? true : false;
         const userId = req.curr_user?._id as string;
+        const account_type = req.account_type;
         try {
-            const get_exam_scenarios = await this.examService.GetExamScenarios(examId, userId, with_user_progress);
+            const get_exam_scenarios = await this.examService.GetExamScenarios(examId, userId, with_user_progress, account_type);
             ApiResponse.ok(get_exam_scenarios, 'Exam scenarios Fetched').send(res);
         } catch (error) {
             this.logger.error('Error getting exam scenarios', error);
@@ -105,8 +106,9 @@ export class ExamsController {
         const examId = req.params.id as string;
         const scenarioId = req.params.scenario_id as string || null;
         const userId = req.curr_user?._id as string;
+        const account_type = req.account_type;
         try {
-            const get_exam_scenario = await this.examService.GetExamScenarioById(examId, userId, scenarioId);
+            const get_exam_scenario = await this.examService.GetExamScenarioById(examId, userId, scenarioId, account_type);
             ApiResponse.ok(get_exam_scenario, 'Exam scenario Fetched').send(res);
         } catch (error) {
             this.logger.error('Error getting exam scenario by ID', error);
@@ -158,6 +160,35 @@ export class ExamsController {
             ApiResponse.created(newSubscription, 'Exam subscription created successfully').send(res);
         } catch (error) {
             this.logger.error('Error creating exam subscription', error);
+            next(error);
+        }
+    }
+
+    async UploadReferenceFile(req: Request, res: Response, next: NextFunction): Promise<void> {
+        const examId = req.params.id as string;
+        const scenarioId = req.params.scenario_id as string;
+        const { reference_name } = req.body;
+        
+        try {
+            const uploadedReference = await this.examService.UploadReferenceFile(examId, scenarioId, req, reference_name);
+            ApiResponse.created(uploadedReference, 'Reference file uploaded successfully').send(res);
+        } catch (error) {
+            this.logger.error('Error uploading reference file', error);
+            next(error);
+        }
+    }
+
+    async UpdateExamScenario(req: Request, res: Response, next: NextFunction): Promise<void> {
+        const examId = req.params.id as string;
+        const scenarioId = req.params.scenario_id as string;
+        const updateData = req.body;
+        const account_type = req.account_type;
+        
+        try {
+            const updatedScenario = await this.examService.UpdateExamScenario(examId, scenarioId, updateData, account_type);
+            ApiResponse.ok(updatedScenario, 'Exam scenario updated successfully').send(res);
+        } catch (error) {
+            this.logger.error('Error updating exam scenario', error);
             next(error);
         }
     }

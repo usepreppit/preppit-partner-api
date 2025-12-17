@@ -273,6 +273,7 @@ export class ExamsRepository {
                     question_details: 1,
                     document_url: 1,
                     page_number: 1,
+                    available_references: 1,
                     examId: 1,
                     totalPersons: 1,
                     avgScore: 1
@@ -328,6 +329,7 @@ export class ExamsRepository {
                     question_details: 1,
                     document_url: 1,
                     page_number: 1,
+                    available_references: 1,
                     attempted: 1,
                     lastAttempt: 1,
                     examId: 1,
@@ -374,6 +376,54 @@ export class ExamsRepository {
     async updateExamScenario(scenarioId: string, updateData: any): Promise<IExamScenarios | null> {
         const scenario_id_object = new mongoose.Types.ObjectId(scenarioId);
         return await this.examScenariosModel.findByIdAndUpdate(scenario_id_object, updateData, { new: true }).exec();
+    }
+
+    async addReferenceToScenario(scenarioId: string, reference: { name: string; url: string; uploaded_at: Date }, referenceName: string): Promise<IExamScenarios | null> {
+        const scenario = await this.examScenariosModel.findById(scenarioId).exec();
+        if (!scenario) {
+            return null;
+        }
+
+        // Add to available_references array
+        const availableReferences = scenario.available_references || [];
+        availableReferences.push(reference);
+
+        // Add reference name to parsed_references in elements
+        const questionDetails = scenario.question_details || {};
+        const elements = questionDetails.elements || [];
+        
+        // Find the references section in elements and add the reference name to parsed_references string
+        let updatedElements = elements.map((element: any) => {
+            if (element.section === 'references' && element.type === 'parsed_references') {
+                // parsed_references is a string, not an array
+                let parsedRefs = element.parsed_references || '';
+                
+                // If it's empty, just set the reference name
+                if (!parsedRefs || parsedRefs.trim() === '') {
+                    parsedRefs = referenceName;
+                } else {
+                    // Check if reference already exists in the string
+                    if (!parsedRefs.includes(referenceName)) {
+                        // Add with comma separator
+                        parsedRefs = `${parsedRefs}, ${referenceName}`;
+                    }
+                }
+                
+                return { ...element, parsed_references: parsedRefs };
+            }
+            return element;
+        });
+
+        // Update the scenario
+        const scenario_id_object = new mongoose.Types.ObjectId(scenarioId);
+        return await this.examScenariosModel.findByIdAndUpdate(
+            scenario_id_object,
+            {
+                available_references: availableReferences,
+                'question_details.elements': updatedElements
+            },
+            { new: true }
+        ).exec();
     }
 
     async getAllMedicationsOnTableExams(): Promise<IGroupedExamScenarios[] | null> {

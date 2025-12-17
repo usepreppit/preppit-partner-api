@@ -55,10 +55,14 @@ export async function uploadToCFBucket(req: Request, file_name = "file", tags = 
 		let document_url: string;
 		if (acl === "public") {
 			// Cloudflare R2 public URL format (requires public bucket or public access policy)
-			document_url = `{process.env.CF_PROFILE_PICTURE_PUB_URL}/${file_key}`;
+			const baseUrl = folder === "exam-references" 
+				? process.env.CF_PROFILE_PICTURE_PUB_URL 
+				: process.env.CF_PROFILE_PICTURE_PUB_URL;
+			document_url = folder === "" ? `${baseUrl}/${file_key}` : `${baseUrl}/${folder}/${file_key}`;
 		} else {
 			// Private bucket → generate signed URL
-			document_url = await getPresignedUrl(file_key, 3600 * 24 * 5); // 1h expiry
+			const keyPath = folder === "" ? file_key : `${folder}/${file_key}`;
+			document_url = await getPresignedUrl(keyPath, 3600 * 24 * 5); // 1h expiry
 		}
 		const update_data = { ...response, ...{ document_name: fileObject.files[file_name].name }, document_url: document_url, document_key: file_key };
 

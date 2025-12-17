@@ -6,8 +6,9 @@ import { IUser } from '../users/types/user.types';
 import { IExamScenarios } from './models/exam_scenarios.model';
 import { IExamSubscriptions } from './models/exam_subscriptions.model';
 import { ExamsRepository } from './models/exams.repository';
+import { Request } from 'express';
 // import { extractPage } from '../../helpers/pdf/pdf.helper';
-import { uploadBufferToCFBucket } from '../../helpers/upload_to_s3.helper';
+import { uploadBufferToCFBucket, uploadToCFBucket } from '../../helpers/upload_to_s3.helper';
 import { pluginLogin, createTask, uploadFile, splitPdf, downloadPdf } from '../../helpers/pdf/pdf.plugins';
 import { promptAiStudio, generateGeminiImage } from '../../helpers/thirdparty/googleaistudio.helper';
 import mongoose from 'mongoose';
@@ -132,7 +133,7 @@ export class ExamsService {
 		}
 	}
 
-	async GetExamScenarios(examId: string, userId: string, user_progress: boolean): Promise<IExamScenarios[] | null> {
+	async GetExamScenarios(examId: string, userId: string, user_progress: boolean, _account_type?: 'admin' | 'partner'): Promise<IExamScenarios[] | null> {
 		try {
 			if(user_progress && !userId) {
 				throw new ApiError(412, 'Unable to get user progress');
@@ -149,13 +150,16 @@ export class ExamsService {
 		}
 	}
 
-	async GetExamScenarioById(examId: string, userId: string, scenarioId: string | null): Promise<IExamScenarios | IExamScenarios[] | null> {
+	async GetExamScenarioById(examId: string, userId: string, scenarioId: string | null, account_type?: 'admin' | 'partner'): Promise<IExamScenarios | IExamScenarios[] | null> {
 		try {
-			//check that the user has access to the exam
-			const is_user_exam = await this.examRepository.getUserExamEnrollment(userId, examId);
-			
-			if(!is_user_exam) {
-				throw new ApiError(403, 'You do not have access to this exam, join the exam to access the scenarios');
+			// Admins can access scenarios without being enrolled
+			if (account_type !== 'admin') {
+				// Check that the user has access to the exam
+				const is_user_exam = await this.examRepository.getUserExamEnrollment(userId, examId);
+				
+				if(!is_user_exam) {
+					throw new ApiError(403, 'You do not have access to this exam, join the exam to access the scenarios');
+				}
 			}
 			
 			const exam_scenario = await this.examRepository.getExamScenarioById(examId, scenarioId);
@@ -452,6 +456,108 @@ export class ExamsService {
 		} catch (error) {
 			this.logger.error('Error sorting exam medications on table', error);
 			throw new ApiError(500, 'Failed to sort exam medications on table', error);
+		}
+	}
+
+	async UploadReferenceFile(examId: string, scenarioId: string, req: Request, reference_name?: string): Promise<any> {
+		try {
+			// Verify the scenario exists
+			const scenario = await this.examRepository.getExamScenarioById(examId, scenarioId);
+			if (!scenario) {
+				throw new ApiError(404, 'Exam scenario not found');
+			}
+
+			// Upload file to Cloudinary (R2)
+			const uploadResult = await uploadToCFBucket(req, 'file', {}, 'public', 'exam-references');
+			
+			if (!uploadResult || !uploadResult.document_url) {
+				throw new ApiError(500, 'Failed to upload reference file');
+			}
+
+			const fileName = reference_name || uploadResult.document_name;
+			const fileUrl = uploadResult.document_url;
+
+			// Add to available_references array
+			const newReference = {
+				name: fileName,
+				url: fileUrl,
+				uploaded_at: new Date()
+			};
+
+			// Update the scenario with new reference
+			const updatedScenario = await this.examRepository.addReferenceToScenario(
+				scenarioId,
+				newReference,
+				fileName
+			);
+
+			this.logger.info(`Reference file uploaded successfully for scenario ${scenarioId}`);
+			return {
+				scenario: updatedScenario,
+				reference: newReference
+			};
+		} catch (error) {
+			this.logger.error('Error uploading reference file', error);
+			if (error instanceof ApiError) {
+				throw error;
+			}
+			throw new ApiError(500, 'Failed to upload reference file', error);
+		}
+	}
+
+	async UpdateExamScenario(examId: string, scenarioId: string, updateData: any, account_type?: 'admin' | 'partner'): Promise<IExamScenarios | null> {
+		try {
+			// Verify the scenario exists and belongs to the exam
+			const scenario = await this.examRepository.getExamScenarioById(examId, scenarioId);
+			if (!scenario) {
+				throw new ApiError(404, 'Exam scenario not found');
+			}
+
+			// Only admins can update scenarios
+			if (account_type !== 'admin') {
+				throw new ApiError(403, 'Only admins can update exam scenarios');
+			}
+
+			// Prepare update object - only update allowed fields
+			const allowedUpdates: any = {};
+
+			if (updateData.question_details !== undefined) {
+				allowedUpdates.question_details = updateData.question_details;
+			}
+			if (updateData.available_references !== undefined) {
+				allowedUpdates.available_references = updateData.available_references;
+			}
+			if (updateData.document_url !== undefined) {
+				allowedUpdates.document_url = updateData.document_url;
+			}
+			if (updateData.page_number !== undefined) {
+				allowedUpdates.page_number = updateData.page_number;
+			}
+			if (updateData.reference_check !== undefined) {
+				allowedUpdates.reference_check = updateData.reference_check;
+			}
+			if (updateData.image_check !== undefined) {
+				allowedUpdates.image_check = updateData.image_check;
+			}
+
+			// Add updated timestamp
+			allowedUpdates.updatedAt = new Date();
+
+			// Update the scenario
+			const updatedScenario = await this.examRepository.updateExamScenario(scenarioId, allowedUpdates);
+
+			if (!updatedScenario) {
+				throw new ApiError(500, 'Failed to update exam scenario');
+			}
+
+			this.logger.info(`Exam scenario ${scenarioId} updated successfully`);
+			return updatedScenario;
+		} catch (error) {
+			this.logger.error('Error updating exam scenario', error);
+			if (error instanceof ApiError) {
+				throw error;
+			}
+			throw new ApiError(500, 'Failed to update exam scenario', error);
 		}
 	}
 
