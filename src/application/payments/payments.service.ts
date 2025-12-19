@@ -1036,8 +1036,10 @@ export class PaymentsService {
 			let prorationFactor = 1;
 			let daysRemaining = 0;
 			let subscriptionEndDate: Date | undefined;
+			let subscriptionStartDate: Date | undefined;
 			let isProrated = false;
 			let seatDetails: any = null;
+			let originalMonths = months;
 
 			// If updating, get subscription details and calculate proration
 			if (is_updating && seat_id) {
@@ -1046,29 +1048,40 @@ export class PaymentsService {
 					throw new ApiError(404, 'Seat subscription not found');
 				}
 
+				console.log(seat);
+
 				seatDetails = seat;
 
-				// Get end date from the subscription
-				subscriptionEndDate = new Date(seat.subscription_end_date);
+				// Get dates from the subscription
+				subscriptionStartDate = new Date(seat.start_date);
+				subscriptionEndDate = new Date(seat.end_date);
 				const today = new Date();
+				today.setHours(0, 0, 0, 0); // Reset to start of day for accurate calculation
 
-				// Calculate days remaining
+				
+				// Calculate days remaining: subscription_end_date - current_date
 				const timeDiff = subscriptionEndDate.getTime() - today.getTime();
 				daysRemaining = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+				console.log(`Subscription Start Date: ${subscriptionStartDate} | Subscription End Date: ${subscriptionEndDate} | Today: ${today} | Days Remaining: ${daysRemaining}`);
 
 				if (daysRemaining <= 0) {
 					throw new ApiError(400, 'Subscription has already expired');
 				}
 
-				// Calculate proration factor based on remaining days
-				// Assuming months is the original subscription duration
-				const totalDaysInSubscription = months * 30;
-				prorationFactor = daysRemaining / totalDaysInSubscription;
+				// Get original subscription duration in months from subscription data
+				const subscriptionTimeDiff = subscriptionEndDate.getTime() - subscriptionStartDate.getTime();
+				const totalSubscriptionDays = Math.ceil(subscriptionTimeDiff / (1000 * 60 * 60 * 24));
+				originalMonths = Math.ceil(totalSubscriptionDays / 30);
+
+				// Calculate proration factor based on remaining days vs total subscription days
+				prorationFactor = daysRemaining / totalSubscriptionDays;
 				isProrated = true;
 
-				// Use sessions and duration from existing subscription
+				// Use sessions_per_day from existing subscription
 				sessions_per_day = seat.sessions_per_day;
-				months = Math.ceil(daysRemaining / 30); // Convert remaining days to months
+				
+				// Use the original months from subscription for pricing calculation
+				months = originalMonths;
 			}
 
 			// Calculate sessions per day (unlimited = 15)
