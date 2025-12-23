@@ -276,6 +276,7 @@ export class ExamsRepository {
                         document_url: 1,
                         page_number: 1,
                         available_references: 1,
+                        status: 1,
                         examId: 1,
                         totalPersons: 1,
                         avgScore: 1
@@ -351,6 +352,7 @@ export class ExamsRepository {
                         document_url: 1,
                         page_number: 1,
                         available_references: 1,
+                        status: 1,
                         attempted: 1,
                         lastAttempt: 1,
                         examId: 1,

@@ -250,6 +250,7 @@ export class ExamsService {
 				document_url: data.document_url,
 				examId: new mongoose.Types.ObjectId(examId),
 				page_number: scenario.page || 0,
+				status: data.status || 'active', // Default to active if not provided
 				provider: data.exam_provider,
 				createdAt: new Date(),
 				updatedAt: new Date()
@@ -538,6 +539,14 @@ export class ExamsService {
 			}
 			if (updateData.image_check !== undefined) {
 				allowedUpdates.image_check = updateData.image_check;
+			}
+			if (updateData.status !== undefined) {
+				// Validate status value
+				const validStatuses = ['active', 'inactive', 'archived', 'deleted'];
+				if (!validStatuses.includes(updateData.status)) {
+					throw new ApiError(400, `Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+				}
+				allowedUpdates.status = updateData.status;
 			}
 
 			// Add updated timestamp

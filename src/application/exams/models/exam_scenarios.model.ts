@@ -1,5 +1,11 @@
 import mongoose, { Document, Types } from 'mongoose';
 
+const Scenario_Status = {
+    ACTIVE: 'active',
+    INACTIVE: 'inactive',
+    ARCHIVED: 'archived',
+    DELETED: 'deleted'
+}
 
 export interface IExamScenarios extends Document {
     examId: Types.ObjectId;
@@ -9,6 +15,7 @@ export interface IExamScenarios extends Document {
     image_check: boolean;
     document_url?: string;
     page_number?: number;
+    status?: string;
     provider?: string;
     createdAt?: Date;
     updatedAt?: Date;
@@ -32,6 +39,7 @@ const ExamScenariosSchema = new mongoose.Schema<IExamScenarios>({
     image_check: { type: Boolean, default: false },
     document_url: { type: String, default: '', index: true },
     page_number: { type: Number, default: 0 },
+    status: { type: String, enum: Object.values(Scenario_Status), default: Scenario_Status.ACTIVE },
     provider: { type: String, default: 'pharm-achieve' },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
