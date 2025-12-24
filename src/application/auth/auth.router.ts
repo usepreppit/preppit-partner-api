@@ -17,5 +17,9 @@ export default (app: Router) => {
     route.post('/social_register', authController.SocialRegister.bind(authController));
     route.post('/forgot_password', authController.ForgotPassword.bind(authController));
     route.post('/reset_password', authController.ResetPassword.bind(authController));
+    
+    // Candidate invitation endpoints (public)
+    route.get('/candidate/verify-token', authController.VerifyCandidateToken.bind(authController));
+    route.post('/candidate/set-password', authController.SetCandidatePassword.bind(authController));
 
 };

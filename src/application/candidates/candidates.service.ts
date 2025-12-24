@@ -3,6 +3,12 @@ import { Logger } from '../../startup/logger';
 import { ApiError, ValidationError } from '../../helpers/error.helper';
 import { CandidatesRepository } from './models/candidates.repository';
 import { PartnerRepository } from '../users/models/partner.repository';
+import { UserRepository } from '../users/models/user.repository';
+import { ExamsRepository } from '../exams/models/exams.repository';
+import { SubscriptionRepository } from '../subscriptions/models/subscriptions.repository';
+import { PostmarkEmailService } from '../../helpers/email/postmark.helper';
+import { postmarkTemplates } from '../../templates/postmark.templates';
+import { randomBytes } from 'crypto';
 import {
     CreateBatchDTO,
     CreateCandidateDTO,
@@ -23,6 +29,10 @@ export class CandidatesService {
         @inject(Logger) private readonly logger: Logger,
         @inject(CandidatesRepository) private readonly candidatesRepository: CandidatesRepository,
         @inject(PartnerRepository) private readonly partnerRepository: PartnerRepository,
+        @inject(UserRepository) private readonly userRepository: UserRepository,
+        @inject(ExamsRepository) private readonly examsRepository: ExamsRepository,
+        @inject(SubscriptionRepository) private readonly subscriptionRepository: SubscriptionRepository,
+        @inject(PostmarkEmailService) private readonly emailService: PostmarkEmailService,
     ) {}
 
     async createBatch(partner_id: string, data: CreateBatchDTO): Promise<ICandidateBatch> {
@@ -142,6 +152,103 @@ export class CandidatesService {
             if (partner && !partner.has_added_candidates) {
                 await this.partnerRepository.markCandidateAdded(partner_id);
                 this.logger.info(`Marked first candidate added for partner: ${partner_id}`);
+            }
+
+            console.log("Partner Data", partner);
+            console.log("Candidate Data", result.user);
+
+            // Automatically enroll candidate in partner's exams (whether paid or not)
+            if (partner && partner.exam_types && partner.exam_types.length > 0) {
+                for (const exam of partner.exam_types) {
+                    // exam_types is populated, so exam is the full object with _id
+                    const examId = typeof exam === 'string' ? exam : (exam as any)._id?.toString() || exam.toString();
+                    console.log("Exam Data", exam);
+                    console.log("Exam ID", examId);
+                    try {
+                        // Check if already enrolled
+                        const existingEnrollment = await this.examsRepository.getUserExamEnrollment(
+                            result.user._id!.toString(),
+                            examId
+                        );
+
+                        console.log("User ID", result.user._id);
+                        
+                        if (!existingEnrollment) {
+                            // Default exam date: 2 months from now
+                            const examDate = new Date();
+                            examDate.setMonth(examDate.getMonth() + 2);
+                            
+                            await this.examsRepository.EnrollUserInExam({
+                                userId: result.user._id as any,
+                                examId: examId as any,
+                                joinedAt: new Date(),
+                                exam_date: examDate,
+                                exam_practice_frequency: '3'
+                            });
+                            this.logger.info(`Auto-enrolled candidate ${result.user._id} in exam ${examId}`);
+                        }
+                    } catch (enrollErr: any) {
+                        // Don't fail candidate creation if enrollment fails
+                        this.logger.error(`Failed to enroll candidate in exam ${examId}:`, enrollErr);
+                    }
+                }
+            }
+
+            // Generate invitation token and send email
+            const invitation_token = randomBytes(32).toString('hex');
+            const token_expiry = new Date();
+            token_expiry.setDate(token_expiry.getDate() + 1); // Token expires in 24 hours
+
+            // Store invitation token in user record
+            if (result.user._id) {
+                await this.userRepository.updateById(result.user._id.toString(), {
+                    verification_token: invitation_token
+                });
+            }
+
+            // Get exam name from partner's exam_types
+            let exam_name = 'Your Exam';
+            if (partner && partner.exam_types && partner.exam_types.length > 0) {
+                // Assuming exam_types is populated with exam objects
+                const firstExam = partner.exam_types[0] as any;
+                exam_name = firstExam.title || firstExam.sim_name || 'Your Exam';
+            }
+
+            // Get sessions_per_day from seat if available
+            let sessions_per_day = 'unlimited';
+            if (seat && seat.is_active) {
+                sessions_per_day = seat.sessions_per_day === -1 ? 'unlimited' : seat.sessions_per_day.toString();
+            }
+
+            // Determine invitee name (partner or admin)
+            const invitee_name = partner ? `${partner.firstname} ${partner.lastname || ''}`.trim() : 'Your Administrator';
+
+            // Generate password setup link
+            const frontend_url = process.env.FRONTEND_URL || process.env.USER_SENDING_URL || 'https://usepreppit.com';
+            const password_setup_link = `${frontend_url}/set-password?email=${encodeURIComponent(result.user.email)}&token=${invitation_token}`;
+
+            // Send invitation email
+            try {
+                await this.emailService.sendTemplateEmail(
+                    postmarkTemplates.CANDIDATE_INVITATION_EMAIL,
+                    result.user.email,
+                    {
+                        firstname: result.user.firstname,
+                        partner_name: invitee_name,
+                        exam_name: exam_name,
+                        daily_limit: sessions_per_day,
+                        create_password_url: password_setup_link,
+                        expiry_time: token_expiry.toLocaleDateString('en-US', { 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                        })
+                    }
+                );
+                this.logger.info(`Invitation email sent to candidate: ${result.user.email}`);
+            } catch (emailError) {
+                this.logger.error(`Failed to send invitation email to ${result.user.email}:`, emailError);
+                // Don't throw error - candidate is already created
             }
 
             this.logger.info(`Candidate created: ${result.user._id} for partner: ${partner_id}`);
@@ -379,6 +486,7 @@ export class CandidatesService {
 
                         // Check seat availability and bulk create candidates
                         if (candidatesToCreate.length > 0) {
+                            let createdResults: any[] = [];
                             try {
                                 let seat: any = null;
                                 let availableSeats = 0;
@@ -403,7 +511,7 @@ export class CandidatesService {
                                 this.logger.info(`Creating ${paidCandidates.length} paid candidates and ${unpaidCandidates.length} unpaid candidates`);
 
                                 // Create both paid and unpaid candidates
-                                const createdResults = await this.candidatesRepository.createCandidatesBulk(
+                                createdResults = await this.candidatesRepository.createCandidatesBulk(
                                     candidatesToCreate,
                                     seat && seat.is_active ? seat._id.toString() : null,
                                     availableSeats
@@ -426,6 +534,42 @@ export class CandidatesService {
                                     createdAt: result.partnerCandidate.createdAt!,
                                     updatedAt: result.partnerCandidate.updatedAt!
                                 }));
+
+                                // Automatically enroll all successfully created candidates in partner's exams
+                                const partner = await this.partnerRepository.findById(partner_id);
+                                if (partner && partner.exam_types && partner.exam_types.length > 0) {
+                                    for (const result of createdResults) {
+                                        for (const exam of partner.exam_types) {
+                                            // exam_types is populated, so exam is the full object with _id
+                                            const examId = typeof exam === 'string' ? exam : (exam as any)._id?.toString() || exam.toString();
+                                            try {
+                                                // Check if already enrolled
+                                                const existingEnrollment = await this.examsRepository.getUserExamEnrollment(
+                                                    result.user._id!.toString(),
+                                                    examId
+                                                );
+                                                
+                                                if (!existingEnrollment) {
+                                                    // Default exam date: 2 months from now
+                                                    const examDate = new Date();
+                                                    examDate.setMonth(examDate.getMonth() + 2);
+                                                    
+                                                    await this.examsRepository.EnrollUserInExam({
+                                                        userId: result.user._id as any,
+                                                        examId: examId as any,
+                                                        joinedAt: new Date(),
+                                                        exam_date: examDate,
+                                                        exam_practice_frequency: '3'
+                                                    });
+                                                    this.logger.info(`Auto-enrolled candidate ${result.user._id} in exam ${examId}`);
+                                                }
+                                            } catch (enrollErr: any) {
+                                                // Don't fail upload if enrollment fails
+                                                this.logger.error(`Failed to enroll candidate ${result.user._id} in exam ${examId}:`, enrollErr);
+                                            }
+                                        }
+                                    }
+                                }
                             } catch (bulkError: any) {
                                 // Handle any bulk insert errors
                                 this.logger.error('Bulk insert error:', bulkError);
@@ -456,17 +600,17 @@ export class CandidatesService {
                             }
                         }
 
-                            // Mark "add candidates" step as complete on dashboard (only on first successful upload)
-                            if (results.successful > 0) {
-                                const partner = await this.partnerRepository.findById(partner_id);
-                                if (partner && !partner.has_added_candidates) {
-                                    await this.partnerRepository.markCandidateAdded(partner_id);
-                                    this.logger.info(`Marked first candidate added via CSV for partner: ${partner_id}`);
-                                }
+                        // Mark "add candidates" step as complete on dashboard (only on first successful upload)
+                        if (results.successful > 0) {
+                            const partner = await this.partnerRepository.findById(partner_id);
+                            if (partner && !partner.has_added_candidates) {
+                                await this.partnerRepository.markCandidateAdded(partner_id);
+                                this.logger.info(`Marked first candidate added via CSV for partner: ${partner_id}`);
                             }
+                        }
 
-                            this.logger.info(`CSV upload completed for partner ${partner_id}: ${results.successful} successful, ${results.failed} failed`);
-                            resolve(results);
+                        this.logger.info(`CSV upload completed for partner ${partner_id}: ${results.successful} successful, ${results.failed} failed`);
+                        resolve(results);
                         } catch (error: any) {
                             this.logger.error('Error processing CSV rows:', error);
                             reject(error);
@@ -640,6 +784,72 @@ export class CandidatesService {
             // Update seats_assigned count
             if (result.updated > 0) {
                 await this.candidatesRepository.incrementSeatsAssigned(seat._id.toString(), result.updated);
+                
+                // Get successfully assigned candidate IDs
+                const assignedCandidateIds = data.candidate_ids.filter(
+                    id => !result.failed.includes(id)
+                );
+                
+                // Create subscriptions for newly assigned candidates
+                // Get seat details to determine sessions_per_day and subscription duration
+                const daily_sessions = seat.sessions_per_day === -1 ? 999 : seat.sessions_per_day;
+                const seatDuration = seat.end_date.getTime() - seat.start_date.getTime();
+                const subscriptionMonths = Math.ceil(seatDuration / (30 * 24 * 60 * 60 * 1000));
+                const startDate = new Date();
+                const endDate = new Date(startDate.getTime() + subscriptionMonths * 30 * 24 * 60 * 60 * 1000);
+                
+                for (const candidateId of assignedCandidateIds) {
+                    try {
+                        await this.subscriptionRepository.createPartnerSubscription({
+                            user_id: candidateId,
+                            partner_id,
+                            batch_id: data.batch_id,
+                            seat_subscription_id: seat._id.toString(),
+                            subscription_start_date: startDate,
+                            subscription_end_date: endDate,
+                            daily_sessions
+                        });
+                        this.logger.info(`Created subscription for candidate ${candidateId} after batch assignment`);
+                    } catch (subErr: any) {
+                        this.logger.error(`Failed to create subscription for candidate ${candidateId}:`, subErr);
+                    }
+                }
+                
+                // Automatically enroll assigned candidates in partner's exams
+                const partner = await this.partnerRepository.findById(partner_id);
+                if (partner && partner.exam_types && partner.exam_types.length > 0) {
+                    for (const candidateId of assignedCandidateIds) {
+                        for (const exam of partner.exam_types) {
+                            // exam_types is populated, so exam is the full object with _id
+                            const examId = typeof exam === 'string' ? exam : (exam as any)._id?.toString() || exam.toString();
+                            try {
+                                // Check if already enrolled
+                                const existingEnrollment = await this.examsRepository.getUserExamEnrollment(
+                                    candidateId,
+                                    examId
+                                );
+                                
+                                if (!existingEnrollment) {
+                                    // Default exam date: 2 months from now
+                                    const examDate = new Date();
+                                    examDate.setMonth(examDate.getMonth() + 2);
+                                    
+                                    await this.examsRepository.EnrollUserInExam({
+                                        userId: candidateId as any,
+                                        examId: examId as any,
+                                        joinedAt: new Date(),
+                                        exam_date: examDate,
+                                        exam_practice_frequency: '3'
+                                    });
+                                    this.logger.info(`Auto-enrolled candidate ${candidateId} in exam ${examId} after batch assignment`);
+                                }
+                            } catch (enrollErr: any) {
+                                // Don't fail assignment if enrollment fails
+                                this.logger.error(`Failed to enroll candidate ${candidateId} in exam ${examId}:`, enrollErr);
+                            }
+                        }
+                    }
+                }
             }
 
             this.logger.info(

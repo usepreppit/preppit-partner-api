@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import { IUser } from '../../users/types/user.types';
 import { ICandidateBatch } from '../../../databases/mongodb/model/candidate_batch.model';
 import { IPartnerCandidate } from '../../../databases/mongodb/model/partner_candidate.model';
+import { IUserDailySessions } from '../../../databases/mongodb/model/user_daily_sessions.model';
 import { CandidateWithBatch, BatchWithCandidateCount } from '../types/candidates.types';
 import { SubscriptionRepository } from '../../subscriptions/models/subscriptions.repository';
 
@@ -14,6 +15,7 @@ export class CandidatesRepository {
         @inject('CandidateBatchModel') private candidateBatchModel: Model<ICandidateBatch>,
         @inject('PartnerCandidateModel') private partnerCandidateModel: Model<IPartnerCandidate>,
         @inject('SeatModel') private seatModel: Model<any>,
+        @inject('UserDailySessionsModel') private userDailySessionsModel: Model<IUserDailySessions>,
         @inject(SubscriptionRepository) private subscriptionRepository: SubscriptionRepository,
     ) {}
 
@@ -97,20 +99,63 @@ export class CandidatesRepository {
 
         const partnerCandidate = await this.partnerCandidateModel.create(partnerCandidateData);
 
-        // Create subscription if candidate is paid for and has a batch
-        if (is_paid_for && batch_id) {
-            const startDate = new Date();
-            const endDate = new Date(startDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+        // Create subscription for ALL candidates (paid or unpaid)
+        // Get seat details to determine sessions_per_day and subscription duration
+        let daily_sessions = 5; // Default
+        let subscriptionMonths = 1; // Default 30 days
+        
+        if (seat_id) {
+            const seat = await this.seatModel.findById(seat_id).lean() as any;
+            if (seat && !Array.isArray(seat)) {
+                // Use seat's sessions_per_day (-1 means unlimited, convert to large number)
+                daily_sessions = seat.sessions_per_day === -1 ? 999 : seat.sessions_per_day;
+                
+                // Calculate subscription duration based on seat start/end dates
+                const seatDuration = seat.end_date.getTime() - seat.start_date.getTime();
+                subscriptionMonths = Math.ceil(seatDuration / (30 * 24 * 60 * 60 * 1000));
+            }
+        }
 
-            await this.subscriptionRepository.createPartnerSubscription({
-                user_id: user._id.toString(),
-                partner_id,
-                batch_id,
-                seat_subscription_id: seat_id || undefined,
-                subscription_start_date: startDate,
-                subscription_end_date: endDate,
-                daily_sessions: 5 // Default daily sessions
-            });
+        const startDate = new Date();
+        const endDate = new Date(startDate.getTime() + subscriptionMonths * 30 * 24 * 60 * 60 * 1000);
+
+        const subscription = await this.subscriptionRepository.createPartnerSubscription({
+            user_id: user._id.toString(),
+            partner_id,
+            batch_id: batch_id || undefined,
+            seat_subscription_id: seat_id || undefined,
+            subscription_start_date: startDate,
+            subscription_end_date: endDate,
+            daily_sessions
+        });
+
+        // Create or update user daily sessions ONLY if batch_id is provided
+        if (batch_id) {
+            await this.userDailySessionsModel.findOneAndUpdate(
+                { userId: user._id },
+                {
+                    $set: {
+                        subscriptionDailySessions: daily_sessions,
+                        subscriptionRemainingSessions: daily_sessions,
+                        totalDailySessions: daily_sessions,
+                        remainingSessions: daily_sessions,
+                        lastResetDate: new Date(),
+                        nextResetDate: (() => {
+                            const tomorrow = new Date();
+                            tomorrow.setDate(tomorrow.getDate() + 1);
+                            tomorrow.setHours(0, 0, 0, 0);
+                            return tomorrow;
+                        })()
+                    },
+                    $push: {
+                        subscriptionSources: {
+                            subscriptionId: subscription._id,
+                            sessionsContributed: daily_sessions
+                        }
+                    }
+                },
+                { upsert: true, new: true }
+            );
         }
 
         return { user: user as IUser, partnerCandidate };
@@ -420,27 +465,82 @@ export class CandidatesRepository {
             await this.incrementSeatsAssigned(seat_id, paidCount);
         }
 
-        // Create subscriptions for paid candidates
-        const paidCandidatesData = candidatesData.slice(0, availableSeats);
-        if (paidCandidatesData.length > 0 && paidCandidatesData[0] && paidCandidatesData[0].batch_id) {
-            const subscriptionsData = paidCandidatesData.map(data => {
+        // Create subscriptions for ALL candidates (paid or unpaid)
+        // Get seat details to determine sessions_per_day and subscription duration
+        let daily_sessions = 5; // Default
+        let subscriptionMonths = 1; // Default 30 days
+        
+        if (seat_id) {
+            const seat = await this.seatModel.findById(seat_id).lean() as any;
+            if (seat && !Array.isArray(seat)) {
+                // Use seat's sessions_per_day (-1 means unlimited, convert to large number)
+                daily_sessions = seat.sessions_per_day === -1 ? 999 : seat.sessions_per_day;
+                
+                // Calculate subscription duration based on seat start/end dates
+                const seatDuration = seat.end_date.getTime() - seat.start_date.getTime();
+                subscriptionMonths = Math.ceil(seatDuration / (30 * 24 * 60 * 60 * 1000));
+            }
+        }
+
+        const subscriptionsData = candidatesData.map(data => {
+            const user = existingUserMap.get(data.email)!;
+            const startDate = new Date();
+            const endDate = new Date(startDate.getTime() + subscriptionMonths * 30 * 24 * 60 * 60 * 1000);
+
+            return {
+                user_id: user._id.toString(),
+                partner_id: data.partner_id,
+                batch_id: data.batch_id,
+                seat_subscription_id: seat_id || undefined,
+                subscription_start_date: startDate,
+                subscription_end_date: endDate,
+                daily_sessions
+            };
+        });
+
+        if (subscriptionsData.length > 0) {
+            const createdSubscriptions = await this.subscriptionRepository.createBulkPartnerSubscriptions(subscriptionsData);
+            
+            // Create or update user daily sessions for all candidates
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(0, 0, 0, 0);
+            
+            const dailySessionsOps = candidatesData.map((data, index) => {
                 const user = existingUserMap.get(data.email)!;
-                // Default to 30 days subscription
-                const startDate = new Date();
-                const endDate = new Date(startDate.getTime() + 30 * 24 * 60 * 60 * 1000);
-
+                const subscription = createdSubscriptions[index];
+                
+                if (!subscription) {
+                    return null;
+                }
+                
                 return {
-                    user_id: user._id.toString(),
-                    partner_id: data.partner_id,
-                    batch_id: data.batch_id,
-                    seat_subscription_id: seat_id || undefined,
-                    subscription_start_date: startDate,
-                    subscription_end_date: endDate,
-                    daily_sessions: 5 // Default daily sessions for partner subscriptions
+                    updateOne: {
+                        filter: { userId: user._id },
+                        update: {
+                            $set: {
+                                subscriptionDailySessions: daily_sessions,
+                                subscriptionRemainingSessions: daily_sessions,
+                                totalDailySessions: daily_sessions,
+                                remainingSessions: daily_sessions,
+                                lastResetDate: new Date(),
+                                nextResetDate: tomorrow
+                            },
+                            $push: {
+                                subscriptionSources: {
+                                    subscriptionId: subscription._id,
+                                    sessionsContributed: daily_sessions
+                                }
+                            }
+                        },
+                        upsert: true
+                    }
                 };
-            });
-
-            await this.subscriptionRepository.createBulkPartnerSubscriptions(subscriptionsData);
+            }).filter(op => op !== null);
+            
+            if (dailySessionsOps.length > 0) {
+                await this.userDailySessionsModel.bulkWrite(dailySessionsOps);
+            }
         }
         
         // Combine results

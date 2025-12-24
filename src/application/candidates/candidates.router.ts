@@ -11,13 +11,14 @@ import {
 import { sendError } from '../../helpers/validator.helper';
 
 const route = Router();
-route.use(authMiddleware);
-route.use(requireOnboardingComplete);
-
 const candidatesController = container.get<CandidatesController>(CandidatesController);
 
 export default (app: Router) => {
     app.use('/candidates', route);
+
+    // Apply authentication middleware for all routes
+    route.use(authMiddleware);
+    route.use(requireOnboardingComplete);
 
     // Get all candidates with their batches
     route.get(

@@ -62,6 +62,7 @@ import { UserActivityLogModel } from '../../application/activity/models/activity
 import { CandidateBatchModel } from '../../databases/mongodb/schema/candidate_batch.schema';
 import PartnerCandidateModel from '../../databases/mongodb/schema/partner_candidate.schema';
 import { SeatModel } from '../../databases/mongodb/schema/seat.schema';
+import { UserDailySessionsModel } from '../../databases/mongodb/model/user_daily_sessions.model';
 
 
 // Repositories
@@ -154,6 +155,7 @@ container.bind<typeof UserActivityLogModel>('ActivityModel').toConstantValue(Use
 container.bind<typeof CandidateBatchModel>('CandidateBatchModel').toConstantValue(CandidateBatchModel);
 container.bind<typeof PartnerCandidateModel>('PartnerCandidateModel').toConstantValue(PartnerCandidateModel);
 container.bind<typeof SeatModel>('SeatModel').toConstantValue(SeatModel);
+container.bind<typeof UserDailySessionsModel>('UserDailySessionsModel').toConstantValue(UserDailySessionsModel);
 
 
 // Application Services

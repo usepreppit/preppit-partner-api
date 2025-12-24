@@ -510,4 +510,94 @@ export class AuthService {
 			}
 		);
 	}
+
+	async verifyCandidateToken(email: string, token: string): Promise<any> {
+		try {
+			// Find user by email with verification_token
+			const user = await this.userRepository.findByEmail(email, false);
+			
+			if (!user) {
+				throw new ApiError(400, 'Invalid email or token');
+			}
+
+			// Verify token matches
+			if (user.verification_token !== token) {
+				throw new ApiError(400, 'Invalid email or token');
+			}
+
+			// Check if user already has a password set
+			if (user.password && user.password !== '') {
+				throw new ApiError(400, 'Account already activated');
+			}
+
+			// Return candidate profile without sensitive information
+			return {
+				_id: user._id,
+				firstname: user.firstname,
+				lastname: user.lastname,
+				email: user.email,
+				profile_picture_url: user.profile_picture_url,
+				invite_status: user.invite_status,
+				createdAt: user.createdAt
+			};
+		} catch (error: any) {
+			if (error instanceof ApiError) {
+				throw error;
+			}
+			this.logger.error('Error verifying candidate token:', error);
+			throw new ApiError(500, 'Failed to verify candidate token');
+		}
+	}
+
+	async setCandidatePassword(email: string, token: string, password: string): Promise<any> {
+		try {
+			// Find user by email with password field
+			const user = await this.userRepository.findByEmail(email, true);
+			
+			if (!user) {
+				throw new ApiError(400, 'Invalid email or token');
+			}
+
+			// Verify token matches
+			if (user.verification_token !== token) {
+				throw new ApiError(400, 'Invalid email or token');
+			}
+
+			// Check if user already has a password set
+			if (user.password && user.password !== '') {
+				throw new ApiError(400, 'Account already activated');
+			}
+
+			// Validate password strength
+			if (password.length < 8) {
+				throw new ApiError(400, 'Password must be at least 8 characters long');
+			}
+
+			// Hash the password
+			const hashedPassword = await hashPassword(password);
+
+			// Update user with new password and mark account as active
+			await this.userRepository.updateById(user._id!.toString(), {
+				password: hashedPassword,
+				is_active: true,
+				invite_status: 'accepted',
+				invite_accepted_at: new Date(),
+				verification_token: undefined // Clear the token after use
+			});
+
+			this.logger.info(`Candidate password set and account activated: ${user.email}`);
+
+			return {
+				message: 'Password set successfully',
+				email: user.email,
+				is_active: true
+			};
+		} catch (error: any) {
+			if (error instanceof ApiError) {
+				throw error;
+			}
+			this.logger.error('Error setting candidate password:', error);
+			throw new ApiError(500, 'Failed to set candidate password');
+		}
+	}
 }

@@ -121,4 +121,53 @@ export class AuthController {
             next(error);
         }
     }
+
+    async VerifyCandidateToken(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { email, token } = req.query;
+
+            if (!email || !token) {
+                ApiResponse.badRequest('Email and token are required').send(res);
+                return;
+            }
+
+            try {
+                const candidate = await this.authService.verifyCandidateToken(
+                    email as string,
+                    token as string
+                );
+                ApiResponse.ok(candidate, 'Token verified successfully').send(res);
+            } catch (error) {
+                next(error);
+            }
+        } catch (error) {
+            this.logger.error('Error in VerifyCandidateToken:', error);
+            next(error);
+        }
+    }
+
+    async SetCandidatePassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const { email, token, password } = req.body;
+
+            if (!email || !token || !password) {
+                ApiResponse.badRequest('Email, token, and password are required').send(res);
+                return;
+            }
+
+            try {
+                const result = await this.authService.setCandidatePassword(
+                    email,
+                    token,
+                    password
+                );
+                ApiResponse.ok(result, 'Password set successfully').send(res);
+            } catch (error) {
+                next(error);
+            }
+        } catch (error) {
+            this.logger.error('Error in SetCandidatePassword:', error);
+            next(error);
+        }
+    }
 }
