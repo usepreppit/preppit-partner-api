@@ -57,4 +57,31 @@ export class PostmarkEmailService {
             throw new ApiError(400, 'Failed to send template email', error);
         }
     }
+
+    async sendBatchTemplateEmail(
+        emails: Array<{
+            templateId: number;
+            to: string;
+            templateData: Record<string, unknown>;
+        }>
+    ): Promise<postmark.Models.MessageSendingResponse[]> {
+        try {
+            const messages = emails.map(email => {
+                email.templateData['product_name'] = "Preppit";
+                return {
+                    From: postmarkConfig.fromEmail,
+                    To: email.to,
+                    TemplateId: email.templateId,
+                    TemplateModel: email.templateData
+                };
+            });
+
+            const results = await this.client.sendEmailBatchWithTemplates(messages);
+            this.logger.info(`Postmark batch template emails sent to ${emails.length} recipients`);
+            return results;
+        } catch (error) {
+            this.logger.error(`Postmark batch template failed: ${error}`);
+            throw new ApiError(400, 'Failed to send batch template emails', error);
+        }
+    }
 }
