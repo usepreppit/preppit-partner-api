@@ -570,6 +570,73 @@ export class CandidatesService {
                                         }
                                     }
                                 }
+
+                                // Send batch invitation emails to all successfully created candidates
+                                if (createdResults.length > 0) {
+                                    try {
+                                        // Get exam name from partner's exam_types
+                                        let exam_name = 'Your Exam';
+                                        if (partner && partner.exam_types && partner.exam_types.length > 0) {
+                                            const firstExam = partner.exam_types[0] as any;
+                                            exam_name = firstExam.title || firstExam.sim_name || 'Your Exam';
+                                        }
+
+                                        // Get sessions_per_day from seat if available
+                                        let sessions_per_day = 'unlimited';
+                                        if (seat && seat.is_active) {
+                                            sessions_per_day = seat.sessions_per_day === -1 ? 'unlimited' : seat.sessions_per_day.toString();
+                                        }
+
+                                        // Determine invitee name
+                                        const invitee_name = partner ? `${partner.firstname} ${partner.lastname || ''}`.trim() : 'Your Administrator';
+
+                                        // Frontend URL for password setup
+                                        const frontend_url = process.env.FRONTEND_URL || process.env.USER_SENDING_URL || 'https://usepreppit.com';
+
+                                        // Prepare batch email data
+                                        const batchEmails = await Promise.all(
+                                            createdResults.map(async (result: any) => {
+                                                // Generate invitation token for each candidate
+                                                const invitation_token = randomBytes(32).toString('hex');
+                                                const token_expiry = new Date();
+                                                token_expiry.setDate(token_expiry.getDate() + 1); // 24 hours
+
+                                                // Store token in user record
+                                                if (result.user._id) {
+                                                    await this.userRepository.updateById(result.user._id.toString(), {
+                                                        verification_token: invitation_token
+                                                    });
+                                                }
+
+                                                const password_setup_link = `${frontend_url}/set-password?email=${encodeURIComponent(result.user.email)}&token=${invitation_token}`;
+
+                                                return {
+                                                    templateId: postmarkTemplates.CANDIDATE_INVITATION_EMAIL,
+                                                    to: result.user.email,
+                                                    templateData: {
+                                                        firstname: result.user.firstname,
+                                                        partner_name: invitee_name,
+                                                        exam_name: exam_name,
+                                                        daily_limit: sessions_per_day,
+                                                        create_password_url: password_setup_link,
+                                                        expiry_time: token_expiry.toLocaleDateString('en-US', { 
+                                                            year: 'numeric', 
+                                                            month: 'long', 
+                                                            day: 'numeric' 
+                                                        })
+                                                    }
+                                                };
+                                            })
+                                        );
+
+                                        // Send batch emails
+                                        await this.emailService.sendBatchTemplateEmail(batchEmails);
+                                        this.logger.info(`Sent ${batchEmails.length} invitation emails for CSV upload`);
+                                    } catch (emailError) {
+                                        this.logger.error('Failed to send batch invitation emails:', emailError);
+                                        // Don't throw - candidates are already created
+                                    }
+                                }
                             } catch (bulkError: any) {
                                 // Handle any bulk insert errors
                                 this.logger.error('Bulk insert error:', bulkError);
