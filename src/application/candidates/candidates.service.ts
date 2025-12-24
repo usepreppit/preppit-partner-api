@@ -629,6 +629,8 @@ export class CandidatesService {
                                             })
                                         );
 
+                                        console.log(batchEmails);
+
                                         // Send batch emails
                                         await this.emailService.sendBatchTemplateEmail(batchEmails);
                                         this.logger.info(`Sent ${batchEmails.length} invitation emails for CSV upload`);
