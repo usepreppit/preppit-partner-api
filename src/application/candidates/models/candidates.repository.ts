@@ -410,6 +410,7 @@ export class CandidatesRepository {
             is_active: boolean;
             is_onboarding_completed: boolean;
             password: string;
+            user_first_enrollment: boolean;
         }> = [];
         
         for (const data of candidatesData) {
@@ -420,7 +421,8 @@ export class CandidatesRepository {
                     email: data.email,
                     is_active: true,
                     is_onboarding_completed: false,
-                    password: '' // Will be set when user accepts invite
+                    password: '', // Will be set when user accepts invite
+                    user_first_enrollment: true
                 });
             }
         }
