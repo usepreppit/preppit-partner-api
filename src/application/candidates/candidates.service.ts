@@ -154,16 +154,11 @@ export class CandidatesService {
                 this.logger.info(`Marked first candidate added for partner: ${partner_id}`);
             }
 
-            console.log("Partner Data", partner);
-            console.log("Candidate Data", result.user);
-
             // Automatically enroll candidate in partner's exams (whether paid or not)
             if (partner && partner.exam_types && partner.exam_types.length > 0) {
                 for (const exam of partner.exam_types) {
                     // exam_types is populated, so exam is the full object with _id
                     const examId = typeof exam === 'string' ? exam : (exam as any)._id?.toString() || exam.toString();
-                    console.log("Exam Data", exam);
-                    console.log("Exam ID", examId);
                     try {
                         // Check if already enrolled
                         const existingEnrollment = await this.examsRepository.getUserExamEnrollment(
@@ -171,7 +166,6 @@ export class CandidatesService {
                             examId
                         );
 
-                        console.log("User ID", result.user._id);
                         
                         if (!existingEnrollment) {
                             // Default exam date: 2 months from now
@@ -629,7 +623,6 @@ export class CandidatesService {
                                             })
                                         );
 
-                                        console.log(batchEmails);
 
                                         // Send batch emails
                                         await this.emailService.sendBatchTemplateEmail(batchEmails);
@@ -654,6 +647,7 @@ export class CandidatesService {
                                         batch_id: batch_id,
                                         batch_name: batch.batch_name,
                                         is_active: candidate.is_active,
+                                        user_first_enrollment: true,
                                         is_paid_for: candidate.is_paid_for || false,
                                         invite_status: candidate.invite_status || 'pending',
                                         invite_sent_at: candidate.invite_sent_at,

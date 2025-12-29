@@ -10,6 +10,7 @@ export interface IPartnerCandidate {
     invite_status: 'pending' | 'accepted' | 'expired'; // Invite acceptance status
     invite_sent_at?: Date; // When invite was sent
     invite_accepted_at?: Date; // When invite was accepted
+    user_first_enrollment?: boolean; // Indicates if this is the candidate's first enrollment
     createdAt?: Date;
     updatedAt?: Date;
 }

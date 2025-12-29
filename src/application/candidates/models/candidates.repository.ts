@@ -65,7 +65,7 @@ export class CandidatesRepository {
         lastname: string,
         email: string,
         is_paid_for: boolean = false,
-        seat_id: string | null = null
+        seat_id: string | null = null,
     ): Promise<{ user: IUser; partnerCandidate: IPartnerCandidate }> {
         // Check if user already exists
         let user = await this.userModel.findOne({ email }).lean();
@@ -78,7 +78,8 @@ export class CandidatesRepository {
                 email,
                 is_active: true,
                 is_onboarding_completed: false,
-                password: '' // Will be set when user accepts invite
+                password: '', // Will be set when user accepts invite
+                user_first_enrollment: true
             });
             user = newUser.toObject();
         }
@@ -89,7 +90,8 @@ export class CandidatesRepository {
             candidate_id: user._id,
             is_paid_for,
             invite_status: 'pending',
-            invite_sent_at: new Date()
+            invite_sent_at: new Date(),
+            user_first_enrollment: true
         };
 
         // Only add batch_id if seats are available (is_paid_for = true)
@@ -443,7 +445,8 @@ export class CandidatesRepository {
                 candidate_id: user!._id,
                 is_paid_for: isPaidFor,
                 invite_status: 'pending' as const,
-                invite_sent_at: new Date()
+                invite_sent_at: new Date(),
+                user_first_enrollment: true
             };
 
             // Only add batch_id if provided and candidate is paid for
@@ -607,7 +610,8 @@ export class CandidatesRepository {
                     },
                     { 
                         batch_id: new mongoose.Types.ObjectId(batch_id),
-                        is_paid_for: true // Mark as paid when assigned to batch
+                        is_paid_for: true, // Mark as paid when assigned to batch
+                        user_first_enrollment: true
                     },
                     { new: true }
                 ).lean();

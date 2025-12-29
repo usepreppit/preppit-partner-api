@@ -32,6 +32,10 @@ const PartnerCandidateSchema: Schema = new Schema(
             enum: ['pending', 'accepted', 'expired'],
             default: 'pending'
         },
+        user_first_enrollment: {
+            type: Boolean,
+            default: false
+        },
         invite_sent_at: {
             type: Date,
             default: Date.now
