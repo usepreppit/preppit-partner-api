@@ -689,10 +689,10 @@ export class CandidatesService {
         }
     }
 
-    async getAllCandidates(partner_id: string): Promise<CandidatesListResponse> {
+    async getAllCandidates(partner_id: string, days: number = 30): Promise<CandidatesListResponse> {
         try {
             const [candidates, batches, total_candidates, total_batches] = await Promise.all([
-                this.candidatesRepository.getCandidatesByPartnerId(partner_id),
+                this.candidatesRepository.getCandidatesByPartnerId(partner_id, days),
                 this.candidatesRepository.getBatchesByPartnerId(partner_id),
                 this.candidatesRepository.getCandidateCountByPartnerId(partner_id),
                 this.candidatesRepository.getBatchCountByPartnerId(partner_id)
@@ -720,7 +720,8 @@ export class CandidatesService {
     async getAllCandidatesPaginated(
         partner_id: string,
         page: number = 1,
-        limit: number = 20
+        limit: number = 20,
+        days: number = 30
     ): Promise<CandidatesListResponse> {
         try {
             // Ensure valid pagination params
@@ -728,7 +729,7 @@ export class CandidatesService {
             limit = Math.min(100, Math.max(1, limit)); // Max 100 per page
 
             const [candidates, batches, total_candidates, total_batches] = await Promise.all([
-                this.candidatesRepository.getCandidatesByPartnerIdPaginated(partner_id, page, limit),
+                this.candidatesRepository.getCandidatesByPartnerIdPaginated(partner_id, page, limit, days),
                 this.candidatesRepository.getBatchesByPartnerId(partner_id),
                 this.candidatesRepository.getCandidateCountByPartnerId(partner_id),
                 this.candidatesRepository.getBatchCountByPartnerId(partner_id)

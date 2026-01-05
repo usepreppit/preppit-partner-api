@@ -31,7 +31,9 @@ export interface CandidateWithBatch {
     invite_status: 'pending' | 'accepted' | 'expired';
     invite_sent_at?: Date;
     invite_accepted_at?: Date;
+    user_first_enrollment?: boolean;
     partner_candidate_id?: string; // ID of the PartnerCandidate relationship record
+    practice_sessions_count?: number; // Count of finished practices within specified date range (default: 30 days)
     createdAt: Date;
     updatedAt: Date;
 }

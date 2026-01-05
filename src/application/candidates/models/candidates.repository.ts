@@ -230,7 +230,10 @@ export class CandidatesRepository {
         return result;
     }
 
-    async getCandidatesByPartnerId(partner_id: string): Promise<CandidateWithBatch[]> {
+    async getCandidatesByPartnerId(partner_id: string, days: number = 30): Promise<CandidateWithBatch[]> {
+        const dateThreshold = new Date();
+        dateThreshold.setDate(dateThreshold.getDate() - days);
+
         const candidates = await this.partnerCandidateModel.aggregate([
             { $match: { partner_id: new mongoose.Types.ObjectId(partner_id) } },
             {
@@ -259,6 +262,27 @@ export class CandidatesRepository {
                 }
             },
             {
+                $lookup: {
+                    from: 'practices',
+                    let: { candidateId: '$candidate._id' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ['$userId', '$$candidateId'] },
+                                        { $eq: ['$status', 'finished'] },
+                                        { $gte: ['$createdAt', dateThreshold] }
+                                    ]
+                                }
+                            }
+                        },
+                        { $count: 'total' }
+                    ],
+                    as: 'practice_stats'
+                }
+            },
+            {
                 $project: {
                     _id: '$candidate._id',
                     firstname: '$candidate.firstname',
@@ -272,6 +296,12 @@ export class CandidatesRepository {
                     invite_sent_at: '$invite_sent_at',
                     invite_accepted_at: '$invite_accepted_at',
                     partner_candidate_id: '$_id',
+                    practice_sessions_last_30_days: {
+                        $ifNull: [
+                            { $arrayElemAt: ['$practice_stats.total', 0] },
+                            0
+                        ]
+                    },
                     createdAt: '$createdAt',
                     updatedAt: '$updatedAt'
                 }
@@ -285,9 +315,12 @@ export class CandidatesRepository {
     async getCandidatesByPartnerIdPaginated(
         partner_id: string,
         page: number,
-        limit: number
+        limit: number,
+        days: number = 30
     ): Promise<CandidateWithBatch[]> {
         const skip = (page - 1) * limit;
+        const dateThreshold = new Date();
+        dateThreshold.setDate(dateThreshold.getDate() - days);
 
         const candidates = await this.partnerCandidateModel.aggregate([
             { $match: { partner_id: new mongoose.Types.ObjectId(partner_id) } },
@@ -317,6 +350,27 @@ export class CandidatesRepository {
                 }
             },
             {
+                $lookup: {
+                    from: 'practices',
+                    let: { candidateId: '$candidate._id' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ['$userId', '$$candidateId'] },
+                                        { $eq: ['$status', 'finished'] },
+                                        { $gte: ['$createdAt', dateThreshold] }
+                                    ]
+                                }
+                            }
+                        },
+                        { $count: 'total' }
+                    ],
+                    as: 'practice_stats'
+                }
+            },
+            {
                 $project: {
                     _id: '$candidate._id',
                     firstname: '$candidate.firstname',
@@ -330,6 +384,12 @@ export class CandidatesRepository {
                     invite_sent_at: '$invite_sent_at',
                     invite_accepted_at: '$invite_accepted_at',
                     partner_candidate_id: '$_id',
+                    practice_sessions_count: {
+                        $ifNull: [
+                            { $arrayElemAt: ['$practice_stats.total', 0] },
+                            0
+                        ]
+                    },
                     createdAt: '$createdAt',
                     updatedAt: '$updatedAt'
                 }
